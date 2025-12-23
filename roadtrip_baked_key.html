@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>SF → NYC Road Trip (Street View + World Map + Weather)</title>
+<title>Bayglass → Pineshade (Procedural Road Trip + Weather)</title>
 <style>
   :root{
     --bg:#05070b;
     --panel:rgba(12,16,24,.62);
-    --panel2:rgba(12,16,24,.78);
+    --panel2:rgba(12,16,24,.82);
     --border:rgba(255,255,255,.12);
     --text:#e8eef7;
     --muted:rgba(232,238,247,.86);
@@ -20,16 +20,16 @@
     font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
   #wrap{position:fixed;inset:0}
 
-  /* pano + layers */
-  #panoWrap{position:absolute;inset:0;z-index:0}
-  .panoLayer{position:absolute;inset:0;opacity:1;transition:opacity .35s ease;will-change:opacity}
-  #panoB{opacity:0}
+  /* Scene (procedural) + layers */
+  #sceneWrap{position:absolute;inset:0;z-index:0}
+  .sceneLayer{position:absolute;inset:0;opacity:1;transition:opacity .35s ease;will-change:opacity}
+  #sceneB{opacity:0}
 
   #weatherCanvas{position:absolute;inset:0;z-index:2;pointer-events:none}
-  #interior{position:absolute;inset:0;z-index:3;pointer-events:none}
+  #interior{position:absolute;inset:0;z-index:3;pointer-events:none;opacity:.92}
   #toyLayer{position:absolute;inset:0;z-index:4;pointer-events:auto}
 
-  /* Always-visible tiny UI bar */
+  /* Tiny always-visible bar */
   #uiBar{
     position:absolute;left:10px;top:10px;z-index:30;
     display:flex;gap:6px;align-items:center;
@@ -53,7 +53,7 @@
   /* HUD (smaller) */
   #hud{
     position:absolute;left:10px;top:52px;z-index:20;
-    max-width:min(540px,92vw);
+    max-width:min(580px,92vw);
     background:var(--panel);backdrop-filter: blur(10px);
     border:1px solid var(--border);
     border-radius:12px;
@@ -70,7 +70,7 @@
   .bad{color:var(--bad)}
   .ok{color:var(--ok)}
 
-  /* Panel (smaller + minimizable) */
+  /* Controls panel */
   #panel{
     position:absolute;left:10px;bottom:10px;z-index:22;
     width:min(760px,95vw);
@@ -84,10 +84,6 @@
   #panel.collapsed .panelBody{display:none}
   #panel h2{margin:0 0 8px;font-size:13px}
   .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  input[type="text"]{
-    flex:1;min-width:210px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
-    background:rgba(255,255,255,.06);color:var(--text);outline:none
-  }
   button,select{
     padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
     background:rgba(125,211,252,.10);color:var(--text);cursor:pointer
@@ -105,7 +101,7 @@
   #log .item{font-size:12px;line-height:1.25;padding:6px;border-bottom:1px solid rgba(255,255,255,.06)}
   #log .item:last-child{border-bottom:none}
 
-  /* Map panel (bigger, Google-maps-ish) */
+  /* Map panel */
   #mapPanel{
     position:absolute;right:10px;top:10px;z-index:21;
     width:520px;height:360px;
@@ -129,7 +125,7 @@
   }
   #mapHeader .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #mapHeader .right{display:flex;gap:6px;align-items:center}
-  #mapHeader button, #mapHeader select{
+  #mapHeader button{
     padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
     background:rgba(255,255,255,.07);color:var(--text);cursor:pointer;font-size:12px
   }
@@ -144,15 +140,7 @@
   #mapPanel:not(.fullscreen) #routeListWrap{display:none}
 
   #mapViewport{position:relative;min-width:0;min-height:0}
-  #mapImg{
-    position:absolute;inset:0;width:100%;height:100%;
-    object-fit:cover;opacity:.95;
-    filter:saturate(1.05) contrast(1.02);
-    display:none; /* enabled when Google Static Maps works */
-  }
-  #mapOverlay{
-    position:absolute;inset:0;width:100%;height:100%;
-  }
+  #mapOverlay{position:absolute;inset:0;width:100%;height:100%}
   #routeListWrap{
     border-left:1px solid rgba(255,255,255,.10);
     background:rgba(0,0,0,.22);
@@ -183,21 +171,11 @@
   }
   #mapTip b{color:#fff}
 
-  /* Car interior frame (small, not blocking view) */
+  /* Interior */
   #interior svg{display:block}
-  #interior{
-    pointer-events:none;
-    opacity:.92;
-  }
 
-  /* Simple toys */
-  .toy{
-    position:absolute;
-    width:44px;height:44px;
-    transform-origin: 50% 0%;
-    cursor:grab;
-    user-select:none;
-  }
+  /* Toys */
+  .toy{position:absolute;width:44px;height:44px;transform-origin:50% 0%;cursor:grab;user-select:none}
   .toy:active{cursor:grabbing}
   .dice{
     background:rgba(255,255,255,.12);
@@ -241,7 +219,7 @@
   }
   .uiHidden #showUiBtn{display:block}
 
-  /* Toasts */
+  /* Toast */
   #toastWrap{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:60;pointer-events:none}
   .toast{
     margin-top:8px;background:rgba(10,16,24,.78);border:1px solid rgba(255,255,255,.12);
@@ -268,23 +246,19 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="panoWrap">
-    <div id="panoA" class="panoLayer"></div>
-    <div id="panoB" class="panoLayer"></div>
+  <div id="sceneWrap">
+    <canvas id="sceneA" class="sceneLayer"></canvas>
+    <canvas id="sceneB" class="sceneLayer"></canvas>
   </div>
 
   <canvas id="weatherCanvas"></canvas>
 
   <div id="interior" aria-hidden="true">
     <svg viewBox="0 0 1000 600" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
-      <!-- roof -->
       <path d="M0,0 L1000,0 L1000,110 C760,75 240,75 0,110 Z" fill="rgba(0,0,0,0.28)"/>
-      <!-- pillars (semi transparent) -->
       <path d="M0,0 L145,0 L280,210 L280,600 L0,600 Z" fill="rgba(0,0,0,0.42)"/>
       <path d="M1000,0 L855,0 L720,210 L720,600 L1000,600 Z" fill="rgba(0,0,0,0.42)"/>
-      <!-- dash -->
       <path d="M0,430 C220,360 780,360 1000,430 L1000,600 L0,600 Z" fill="rgba(0,0,0,0.74)"/>
-      <!-- steering wheel hint -->
       <circle cx="500" cy="528" r="110" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="18"/>
       <circle cx="500" cy="528" r="70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"/>
     </svg>
@@ -292,13 +266,12 @@
 
   <div id="toyLayer"></div>
 
-  <!-- Always-visible mini bar -->
   <div id="uiBar">
     <button id="btnHud">HUD</button>
     <button id="btnPanel">UI</button>
     <button id="btnMap">Map</button>
     <button id="btnHideAll">Hide</button>
-    <span class="pill">Keys: <b>H</b> hide • <b>M</b> map • <b>F</b> map full</span>
+    <span class="pill">Keys: <b>Space</b> start/pause • <b>H</b> hide • <b>M</b> map • <b>F</b> map full</span>
   </div>
 
   <button id="showUiBtn">Show UI</button>
@@ -307,7 +280,7 @@
   <div id="hud">
     <div class="row" style="justify-content:space-between">
       <div class="row" style="gap:8px">
-        <span class="pill"><b>Speed</b>: <span id="hudSpeed">50</span> mph</span>
+        <span class="pill"><b>Speed</b>: <span id="hudSpeed">60</span> mph</span>
         <span class="pill"><b>Progress</b>: <span id="hudPct">0.0%</span></span>
         <span class="pill"><b>Miles</b>: <span id="hudMiles">0</span></span>
         <span class="pill"><b>ETA</b>: <span id="hudEta">—</span></span>
@@ -316,10 +289,11 @@
     </div>
     <div class="hudBody">
       <div id="status" style="margin-top:6px">
-        Paste your <b>Google Maps API key</b> below and press <b>Start</b>. <span class="warn">Don’t commit your key.</span>
+        Procedural road-trip world. <span class="ok"><b>No Google images.</b></span>
+        Weather uses Open‑Meteo (real forecast) when available.
       </div>
       <div class="row" style="margin-top:6px">
-        <span class="pill"><b>Now</b>: <span id="hudNow">San Francisco, CA</span></span>
+        <span class="pill"><b>Now</b>: <span id="hudNow">Bayglass</span></span>
         <span class="pill"><b>Next</b>: <span id="hudNext">—</span></span>
         <span class="pill"><b>Weather</b>: <span id="hudWx">—</span></span>
       </div>
@@ -334,17 +308,17 @@
     </div>
     <div class="panelBody">
       <div class="controls" style="margin-top:8px">
-        <input id="apiKey" type="text" placeholder="Google Maps API key (Maps JavaScript API enabled)"/>
         <button id="startBtn">Start</button>
         <button id="pauseBtn">Pause</button>
         <button id="resetBtn">Reset</button>
-        <span class="pill"><label><input id="rememberKey" type="checkbox" style="vertical-align:middle;margin-right:6px">Remember key</label></span>
+        <span class="pill"><label><input id="offlineToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Continue while away</label></span>
+        <span class="pill"><label><input id="hazardToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Hazard warnings</label></span>
       </div>
 
       <div class="subrow">
         <span class="pill">
-          <label><b>Speed</b> <span id="speedLabel">50</span> mph</label>
-          <input id="speedSlider" type="range" min="50" max="250" value="50" step="1"/>
+          <label><b>Speed</b> <span id="speedLabel">60</span> mph</label>
+          <input id="speedSlider" type="range" min="30" max="160" value="60" step="1"/>
         </span>
 
         <span class="pill">
@@ -359,21 +333,8 @@
         <span class="pill">
           <label><b>Route</b>
             <select id="routeSel">
-              <option value="main">Main (I‑80-ish)</option>
-              <option value="south">Detour (southern)</option>
-            </select>
-          </label>
-        </span>
-
-        <span class="pill"><label><input id="offlineToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Continue while away</label></span>
-        <span class="pill"><label><input id="hazardToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Hazard warnings</label></span>
-
-        <span class="pill">
-          <label><b>Map style</b>
-            <select id="mapStyleSel">
-              <option value="auto">Auto (try Google)</option>
-              <option value="google">Google Static</option>
-              <option value="simple">Simple grid</option>
+              <option value="main">Main highway</option>
+              <option value="detour">Backroad detour</option>
             </select>
           </label>
         </span>
@@ -402,12 +363,11 @@
 
     <div id="mapMain">
       <div id="mapViewport">
-        <img id="mapImg" alt="Map background"/>
         <canvas id="mapOverlay"></canvas>
         <div id="mapTip"></div>
       </div>
       <div id="routeListWrap">
-        <h3>Route list (like Google Maps)</h3>
+        <h3>Route list</h3>
         <div id="routeList"></div>
       </div>
     </div>
@@ -435,80 +395,43 @@
 <script>
 (() => {
   // ====== config ======
-  const DEFAULT_SPEED=50, MAX_SPEED=250;
-  const HIGH_WIND_MPH=50;           // stop if >= this
-  const HEAVY_RAIN_MM_H=8;          // warn/stop
-  const HEAVY_SNOW_CM_H=1.5;        // warn/stop
-  const HAZARD_LOOKAHEAD_MILES=250;
+  const DEFAULT_SPEED=60, MIN_SPEED=30, MAX_SPEED=160;
+
+  // Hazards
+  const HIGH_WIND_MPH=50;
+  const HEAVY_RAIN_MM_H=8;
+  const HEAVY_SNOW_CM_H=1.5;
+  const HAZARD_LOOKAHEAD_MILES=140;         // shorter route, smaller lookahead feels right
   const WX_CACHE_MAX_AGE_MS=25*60*1000;
   const WX_FORECAST_DAYS=3;
   const HAZARD_CHECK_EVERY_MS=35*1000;
 
-  // ====== routes ======
+  // Scene updates
+  const SCENE_REFRESH_MS = 2200;
+
+  // ====== fictional route (SF → Truckee, renamed) ======
+  // We keep real coordinates ONLY for weather math. No real images are used.
   const ROUTES={
-    main:{name:"Main (I‑80-ish)",waypoints:[
-      {name:"San Francisco, CA",lat:37.7749,lng:-122.4194,state:"CA",tier:"major"},
-      {name:"Oakland, CA",lat:37.8044,lng:-122.2711,state:"CA"},
-      {name:"Vallejo, CA",lat:38.1041,lng:-122.2566,state:"CA"},
-      {name:"Sacramento, CA",lat:38.5816,lng:-121.4944,state:"CA",tier:"major"},
-      {name:"Truckee, CA",lat:39.3279,lng:-120.1833,state:"CA"},
-      {name:"Reno, NV",lat:39.5296,lng:-119.8138,state:"NV",tier:"major"},
-      {name:"Winnemucca, NV",lat:40.9729,lng:-117.7357,state:"NV"},
-      {name:"Elko, NV",lat:40.8324,lng:-115.7631,state:"NV"},
-      {name:"Wendover, UT",lat:40.7391,lng:-114.0733,state:"UT"},
-      {name:"Salt Lake City, UT",lat:40.7608,lng:-111.8910,state:"UT",tier:"major",rare:true,note:"✨ Rare milestone: Great Salt Lake vibes"},
-      {name:"Evanston, WY",lat:41.2683,lng:-110.9632,state:"WY"},
-      {name:"Rock Springs, WY",lat:41.5875,lng:-109.2029,state:"WY"},
-      {name:"Rawlins, WY",lat:41.7911,lng:-107.2387,state:"WY"},
-      {name:"Laramie, WY",lat:41.3114,lng:-105.5911,state:"WY"},
-      {name:"Cheyenne, WY",lat:41.14,lng:-104.8202,state:"WY",tier:"major"},
-      {name:"Sidney, NE",lat:41.1428,lng:-102.9771,state:"NE"},
-      {name:"North Platte, NE",lat:41.1403,lng:-100.7601,state:"NE"},
-      {name:"Kearney, NE",lat:40.6995,lng:-99.0815,state:"NE"},
-      {name:"Omaha, NE",lat:41.2565,lng:-95.9345,state:"NE",tier:"major"},
-      {name:"Des Moines, IA",lat:41.5868,lng:-93.625,state:"IA",tier:"major"},
-      {name:"Iowa City, IA",lat:41.6611,lng:-91.5302,state:"IA"},
-      {name:"Davenport, IA",lat:41.5236,lng:-90.5776,state:"IA"},
-      {name:"Joliet, IL",lat:41.525,lng:-88.0817,state:"IL"},
-      {name:"Chicago, IL",lat:41.8781,lng:-87.6298,state:"IL",tier:"major"},
-      {name:"South Bend, IN",lat:41.6764,lng:-86.252,state:"IN"},
-      {name:"Toledo, OH",lat:41.6528,lng:-83.5379,state:"OH"},
-      {name:"Cleveland, OH",lat:41.4993,lng:-81.6944,state:"OH",tier:"major"},
-      {name:"Erie, PA",lat:42.1292,lng:-80.0851,state:"PA"},
-      {name:"Scranton, PA",lat:41.4089,lng:-75.6624,state:"PA"},
-      {name:"Newark, NJ",lat:40.7357,lng:-74.1724,state:"NJ"},
-      {name:"New York City, NY",lat:40.7128,lng:-74.006,state:"NY",tier:"major"},
+    main:{name:"Main highway",waypoints:[
+      {name:"Bayglass",          lat:37.7749,lng:-122.4194, zone:"Bay",     tier:"major", biome:"bay",   note:"Fog, bridges, bright cafés"},
+      {name:"Eastbay Junction",  lat:37.8044,lng:-122.2711, zone:"Bay",     biome:"city"},
+      {name:"Rivetport",         lat:38.1041,lng:-122.2566, zone:"Delta",   biome:"port"},
+      {name:"Rivergate",         lat:38.5816,lng:-121.4944, zone:"Valley",  tier:"major", biome:"valley", rare:true, note:"✨ Rare milestone: river-city lights"},
+      {name:"Pineshade Summit",  lat:39.3279,lng:-120.1833, zone:"Sierra",  tier:"major", biome:"mountain", rare:true, note:"✨ Rare milestone: the climb into pine air"},
     ]},
-    south:{name:"Detour (southern)",waypoints:[
-      {name:"San Francisco, CA",lat:37.7749,lng:-122.4194,state:"CA",tier:"major"},
-      {name:"San Jose, CA",lat:37.3382,lng:-121.8863,state:"CA",tier:"major"},
-      {name:"Fresno, CA",lat:36.7378,lng:-119.7871,state:"CA"},
-      {name:"Bakersfield, CA",lat:35.3733,lng:-119.0187,state:"CA"},
-      {name:"Barstow, CA",lat:34.8958,lng:-117.0173,state:"CA"},
-      {name:"Las Vegas, NV",lat:36.1699,lng:-115.1398,state:"NV",tier:"major",rare:true,note:"✨ Rare milestone: neon desert detour"},
-      {name:"St George, UT",lat:37.0965,lng:-113.5684,state:"UT"},
-      {name:"Cedar City, UT",lat:37.6775,lng:-113.0619,state:"UT"},
-      {name:"Grand Junction, CO",lat:39.0639,lng:-108.5506,state:"CO"},
-      {name:"Denver, CO",lat:39.7392,lng:-104.9903,state:"CO",tier:"major"},
-      {name:"Colby, KS",lat:39.3958,lng:-101.0524,state:"KS"},
-      {name:"Salina, KS",lat:38.8403,lng:-97.6114,state:"KS"},
-      {name:"Kansas City, MO",lat:39.0997,lng:-94.5786,state:"MO",tier:"major"},
-      {name:"St Louis, MO",lat:38.627,lng:-90.1994,state:"MO",tier:"major"},
-      {name:"Indianapolis, IN",lat:39.7684,lng:-86.1581,state:"IN",tier:"major"},
-      {name:"Columbus, OH",lat:39.9612,lng:-82.9988,state:"OH",tier:"major"},
-      {name:"Pittsburgh, PA",lat:40.4406,lng:-79.9959,state:"PA",tier:"major"},
-      {name:"Harrisburg, PA",lat:40.2732,lng:-76.8867,state:"PA"},
-      {name:"Newark, NJ",lat:40.7357,lng:-74.1724,state:"NJ"},
-      {name:"New York City, NY",lat:40.7128,lng:-74.006,state:"NY",tier:"major"},
+    detour:{name:"Backroad detour",waypoints:[
+      {name:"Bayglass",          lat:37.7749,lng:-122.4194, zone:"Bay",       tier:"major", biome:"bay"},
+      {name:"Vinevale",          lat:38.2975,lng:-122.2869, zone:"Hills",     biome:"hills"},
+      {name:"Rivergate",         lat:38.5816,lng:-121.4944, zone:"Valley",    tier:"major", biome:"valley"},
+      {name:"Goldfield",         lat:38.8966,lng:-121.0769, zone:"Foothills", biome:"foothills"},
+      {name:"Pineshade Summit",  lat:39.3279,lng:-120.1833, zone:"Sierra",    tier:"major", biome:"mountain", rare:true, note:"✨ Rare milestone: the climb into pine air"},
     ]}
   };
 
   const LANDMARKS=[
-    {name:"Golden Gate Bridge",lat:37.8199,lng:-122.4783,radius_m:2500,tier:"major"},
-    {name:"Bonneville Salt Flats",lat:40.7635,lng:-113.9067,radius_m:7000,tier:"rare"},
-    {name:"Gateway Arch (St Louis)",lat:38.6247,lng:-90.1848,radius_m:3000,tier:"major"},
-    {name:"Willis Tower (Chicago)",lat:41.8789,lng:-87.6359,radius_m:2500,tier:"major"},
-    {name:"Statue of Liberty (NYC)",lat:40.6892,lng:-74.0445,radius_m:3500,tier:"major"},
+    {name:"Fogspan Bridge", lat:37.8199,lng:-122.4783, radius_m:2200, tier:"major"},
+    {name:"Rivergate Capitol", lat:38.5767,lng:-121.4934, radius_m:1800, tier:"major"},
+    {name:"Sierra Crestline", lat:39.3200,lng:-120.2700, radius_m:6500, tier:"rare"},
   ];
 
   // ====== helpers ======
@@ -520,7 +443,10 @@
   const toRad=d=>d*Math.PI/180;
   const safeText=s=>String(s).replace(/[<>]/g,"");
 
-  function fmtTime(ms){ if(!Number.isFinite(ms)) return "—"; return new Date(ms).toLocaleString(undefined,{hour:"numeric",minute:"2-digit"}); }
+  function fmtTime(ms){
+    if(!Number.isFinite(ms)) return "—";
+    return new Date(ms).toLocaleString(undefined,{hour:"numeric",minute:"2-digit"});
+  }
 
   function haversine(a,b){
     const R=6371000;
@@ -551,9 +477,27 @@
     return "•";
   }
 
+  // Deterministic RNG (fallback weather + scene variation)
+  function mulberry32(seed){
+    return function(){
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function seedFrom(lat,lng){
+    const a = Math.floor((lat+90)*1000);
+    const b = Math.floor((lng+180)*1000);
+    return (a*73856093) ^ (b*19349663);
+  }
+
   // ====== DOM ======
   const wrap=$("wrap");
-  const panoAEl=$("panoA"), panoBEl=$("panoB");
+  const sceneA=$("sceneA"), sceneB=$("sceneB");
+  const sctxA=sceneA.getContext("2d");
+  const sctxB=sceneB.getContext("2d");
+
   const weatherCanvas=$("weatherCanvas");
   const wctx=weatherCanvas.getContext("2d");
   const toyLayer=$("toyLayer");
@@ -563,13 +507,10 @@
   const showUiBtn=$("showUiBtn");
   const hudCollapse=$("hudCollapse"), panelCollapse=$("panelCollapse");
 
-  const apiKeyEl=$("apiKey");
-  const rememberKeyEl=$("rememberKey");
   const startBtn=$("startBtn"), pauseBtn=$("pauseBtn"), resetBtn=$("resetBtn");
   const speedSlider=$("speedSlider"), speedLabel=$("speedLabel");
   const unitSel=$("unitSel"), routeSel=$("routeSel");
   const offlineToggle=$("offlineToggle"), hazardToggle=$("hazardToggle");
-  const mapStyleSel=$("mapStyleSel");
 
   const hudSpeed=$("hudSpeed"), hudPct=$("hudPct"), hudMiles=$("hudMiles"), hudEta=$("hudEta");
   const hudNow=$("hudNow"), hudNext=$("hudNext"), hudWx=$("hudWx"), statusEl=$("status");
@@ -578,7 +519,6 @@
   const mapPanel=$("mapPanel");
   const mapWhere=$("mapWhere");
   const mapFitBtn=$("mapFit"), mapWorldBtn=$("mapWorld"), mapZoomInBtn=$("mapZoomIn"), mapZoomOutBtn=$("mapZoomOut"), mapFullBtn=$("mapFull");
-  const mapImg=$("mapImg");
   const mapOverlay=$("mapOverlay");
   const mapTip=$("mapTip");
   const routeList=$("routeList");
@@ -589,51 +529,44 @@
   const modalContinue=$("modalContinue"), modalClose=$("modalClose");
 
   // ====== state ======
-  const STORE_KEY="roadtrip_sv_v5";
-  const defaultState=()=>({
-    running:false,
-    offlineContinue:true,
-    hazardMode:true,
-    routeId:"main",
-    wpIndex:0, t:0, meters:0,
-    speedMph:DEFAULT_SPEED,
-    unit:"F",
-    simTimeMs:Date.now(),
-    lastRealMs:Date.now(),
-    lastState:ROUTES.main.waypoints[0].state,
-    log:[],
-    rememberKey:false,
-    apiKey:"",
-    uiHidden:false,
-    hudCollapsed:false,
-    panelCollapsed:false,
-    mapVisible:true,
-    mapFullscreen:false,
-    mapStyle:"auto",
-    mapCenter:{lat:39.0,lng:-98.0},
-    mapZoom:4,
-  });
+  const STORE_KEY="roadtrip_bayglass_pineshade_v1";
+  const defaultState=()=>(function(){
+    return {
+      running:false,
+      offlineContinue:true,
+      hazardMode:true,
+      routeId:"main",
+      wpIndex:0, t:0, meters:0,
+      speedMph:DEFAULT_SPEED,
+      unit:"F",
+      simTimeMs:Date.now(),
+      lastRealMs:Date.now(),
+      lastZone:ROUTES.main.waypoints[0].zone,
+      log:[],
+      uiHidden:false,
+      hudCollapsed:false,
+      panelCollapsed:false,
+      mapVisible:true,
+      mapFullscreen:false,
+      mapCenter:{lat:38.6,lng:-121.7},
+      mapZoom:7,
+    };
+  })();
 
   function loadState(){ try{return JSON.parse(localStorage.getItem(STORE_KEY)||"null")}catch{return null} }
   let state=Object.assign(defaultState(), loadState()||{});
-  if(!state.rememberKey) state.apiKey="";
 
   function saveState(){
-    const s={...state};
-    if(!s.rememberKey) s.apiKey="";
-    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
   }
 
   // ====== apply initial UI state ======
-  apiKeyEl.value=state.apiKey||"";
-  rememberKeyEl.checked=!!state.rememberKey;
   offlineToggle.checked=!!state.offlineContinue;
   hazardToggle.checked=!!state.hazardMode;
   routeSel.value=state.routeId;
   unitSel.value=state.unit;
-  mapStyleSel.value=state.mapStyle||"auto";
 
-  speedSlider.value=String(clamp(state.speedMph,50,MAX_SPEED));
+  speedSlider.value=String(clamp(state.speedMph,MIN_SPEED,MAX_SPEED));
   speedLabel.textContent=String(state.speedMph);
   hudSpeed.textContent=String(state.speedMph);
 
@@ -642,6 +575,7 @@
   if(state.panelCollapsed) panel.classList.add("collapsed");
   mapPanel.classList.toggle("hidden", !state.mapVisible);
   mapPanel.classList.toggle("fullscreen", !!state.mapFullscreen);
+  mapFullBtn.textContent = state.mapFullscreen ? "Min" : "Full";
 
   // ====== route segments ======
   let route=ROUTES[state.routeId];
@@ -656,10 +590,6 @@
       const m=haversine(a,b);
       segments.push({a,b,m});
       totalMeters += m;
-    }
-    // Fit map to route on load if we don't have a saved view
-    if(!state.mapCenter || !Number.isFinite(state.mapCenter.lat)){
-      fitRouteMap();
     }
     renderRouteList();
   }
@@ -706,103 +636,29 @@
     div.className="toast";
     div.innerHTML=html;
     toastWrap.appendChild(div);
-    setTimeout(()=>{div.style.opacity="0";div.style.transform="translateY(-4px)"}, ttl-250);
+    setTimeout(()=>{div.style.opacity="0";div.style.transform="translateY(-4px)"}, Math.max(300,ttl-250));
     setTimeout(()=>div.remove(), ttl);
   }
 
-  // ====== weather canvas resizing ======
-  function resizeWeather(){
+  // ====== resize canvases ======
+  function resizeCanvasToScreen(canvas, ctx){
     const dpr=window.devicePixelRatio||1;
-    weatherCanvas.width=Math.floor(innerWidth*dpr);
-    weatherCanvas.height=Math.floor(innerHeight*dpr);
-    weatherCanvas.style.width=innerWidth+"px";
-    weatherCanvas.style.height=innerHeight+"px";
-    wctx.setTransform(dpr,0,0,dpr,0,0);
+    canvas.width=Math.floor(innerWidth*dpr);
+    canvas.height=Math.floor(innerHeight*dpr);
+    canvas.style.width=innerWidth+"px";
+    canvas.style.height=innerHeight+"px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
   }
-  addEventListener("resize",()=>{ resizeWeather(); resizeMapOverlay(); updateStaticMap(true); });
-  resizeWeather();
-
-  // ====== Google Street View with cross-fade ======
-  let googleReady=false;
-  let panoA=null, panoB=null;
-  let svService=null;
-  let activePano="A";
-  let userLookUntil=0;
-  let settingPov=false;
-
-  function loadGoogle(key){
-    return new Promise((resolve,reject)=>{
-      if(googleReady) return resolve();
-      if(!key) return reject(new Error("Missing API key."));
-      window.gm_authFailure=()=>reject(new Error("Google Maps auth failure (check referrers + enabled Maps JavaScript API)."));
-      const s=document.createElement("script");
-      s.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
-      s.async=true;
-      s.onerror=()=>reject(new Error("Failed to load Google Maps JS script."));
-      s.onload=()=>{googleReady=true; resolve();};
-      document.head.appendChild(s);
-    });
+  function resizeAll(){
+    resizeCanvasToScreen(sceneA,sctxA);
+    resizeCanvasToScreen(sceneB,sctxB);
+    resizeCanvasToScreen(weatherCanvas,wctx);
+    resizeMapOverlay();
   }
+  addEventListener("resize", resizeAll);
+  resizeAll();
 
-  function getActivePano(){ return activePano==="A" ? panoA : panoB; }
-  function getInactivePano(){ return activePano==="A" ? panoB : panoA; }
-
-  async function ensureStreetView(){
-    const key=apiKeyEl.value.trim();
-    if(!key) throw new Error("Missing API key.");
-    await loadGoogle(key);
-
-    if(!panoA){
-      panoA=new google.maps.StreetViewPanorama(panoAEl,{
-        disableDefaultUI:true,clickToGo:true,showRoadLabels:false,
-        motionTracking:false,motionTrackingControl:false
-      });
-      panoB=new google.maps.StreetViewPanorama(panoBEl,{
-        disableDefaultUI:true,clickToGo:true,showRoadLabels:false,
-        motionTracking:false,motionTrackingControl:false
-      });
-
-      const onUserLook=()=>{
-        if(settingPov) return;
-        userLookUntil=performance.now()+2500;
-      };
-      panoA.addListener("pov_changed", onUserLook);
-      panoB.addListener("pov_changed", onUserLook);
-
-      svService=new google.maps.StreetViewService();
-    }
-  }
-
-  async function setPanoramaSmooth(panoId, pov){
-    const inactive = getInactivePano();
-    const active = getActivePano();
-
-    // set new pano on inactive layer
-    inactive.setPano(panoId);
-    settingPov=true;
-    inactive.setPov(pov);
-    settingPov=false;
-
-    // fade
-    if(activePano==="A"){
-      panoBEl.style.opacity="1";
-      panoAEl.style.opacity="0";
-      activePano="B";
-    } else {
-      panoAEl.style.opacity="1";
-      panoBEl.style.opacity="0";
-      activePano="A";
-    }
-
-    // keep active in sync later (optional)
-    // active set to 0 opacity; but still exists
-    active.setPano(panoId);
-    settingPov=true;
-    active.setPov(pov);
-    settingPov=false;
-  }
-
-  // ====== Open-Meteo weather ======
+  // ====== Open‑Meteo weather (real) + fallback synthetic ======
   const wxCache=new Map();
   const wxKey=(lat,lng)=>`${lat.toFixed(3)},${lng.toFixed(3)}`;
 
@@ -825,17 +681,64 @@
       rainMm:data.hourly?.rain||[],
       snowCm:(data.hourly?.snowfall||[]).map(v=>v??0),
       windMps:(data.hourly?.windspeed_10m||[]).map(v=>(v??0)/3.6),
-      code:data.hourly?.weather_code||[]
+      code:data.hourly?.weather_code||[],
+      synthetic:false
     };
   }
+
+  function syntheticForecast(lat,lng){
+    const now = Date.now();
+    const baseHour = Math.floor(now/3600000)*3600000;
+    const hours = WX_FORECAST_DAYS*24;
+    const times = Array.from({length:hours},(_,i)=>baseHour + i*3600000);
+
+    const rng = mulberry32(seedFrom(lat,lng) ^ 0xA5A5A5);
+    const tempC=[], precip=[], rain=[], snow=[], windMps=[], code=[];
+    for(let i=0;i<hours;i++){
+      const t = i/hours;
+      const daily = Math.sin((i%24)/24 * Math.PI*2);
+      const seasonal = Math.sin((t*2)*Math.PI);
+      const base = 10 + 6*daily + 3*seasonal;
+
+      const noise = (rng()-0.5)*4;
+      const tc = base + noise;
+
+      // precip bursts
+      const storm = Math.max(0, (rng() < 0.14 ? (rng()*12) : 0));
+      const wind = 2 + rng()*8 + (storm>6 ? rng()*8 : 0);
+
+      const isCold = tc < 1.5;
+      const p = storm;
+      const r = isCold ? 0 : p*(0.7 + rng()*0.3);
+      const s = isCold ? p*(0.12 + rng()*0.18) : 0;
+
+      tempC.push(tc);
+      precip.push(p);
+      rain.push(r);
+      snow.push(s);
+      windMps.push(wind);
+      code.push(0);
+    }
+    return {fetchedAt:Date.now(), hourlyTimesMs:times, tempC, precipMm:precip, rainMm:rain, snowCm:snow, windMps, code, synthetic:true};
+  }
+
   async function getWxForecast(lat,lng){
     const key=wxKey(lat,lng);
     const cached=wxCache.get(key);
     if(cached && (Date.now()-cached.fetchedAt)<WX_CACHE_MAX_AGE_MS) return cached;
-    const fresh=await fetchWx(lat,lng);
-    wxCache.set(key,fresh);
-    return fresh;
+
+    try{
+      const fresh=await fetchWx(lat,lng);
+      wxCache.set(key,fresh);
+      return fresh;
+    }catch{
+      // offline / blocked → synthetic
+      const syn = syntheticForecast(lat,lng);
+      wxCache.set(key,syn);
+      return syn;
+    }
   }
+
   function nearestHourIndex(wx,timeMs){
     const arr=wx.hourlyTimesMs; if(!arr.length) return -1;
     let lo=0,hi=arr.length-1;
@@ -856,10 +759,10 @@
     const windMps=wx.windMps[i]??0;
     const mode=(snow>0.2)?"snow":(rain>0.1||precip>0.1?"rain":"none");
     const intensity=clamp(precip/6,0,1);
-    return {tempC,precip,rain,snow,windMph:mpsToMph(windMps),mode,intensity,timeMs:wx.hourlyTimesMs[i]};
+    return {tempC,precip,rain,snow,windMph:mpsToMph(windMps),mode,intensity,timeMs:wx.hourlyTimesMs[i], synthetic:!!wx.synthetic};
   }
 
-  // ====== particles (fall from top) ======
+  // ====== weather particles ======
   const particles=[];
   let wxMode="none", wxIntensity=0, wxWindMph=0;
 
@@ -870,7 +773,7 @@
     while(particles.length<count){
       particles.push({
         x: Math.random()*innerWidth,
-        y: -Math.random()*innerHeight,   // START FROM TOP (negative y)
+        y: -Math.random()*innerHeight,
         vx: wxMode==="rain" ? -30 : (-6 + Math.random()*12),
         vy: wxMode==="rain" ? (420 + Math.random()*260) : (55 + Math.random()*95),
         s: wxMode==="rain" ? (10 + Math.random()*18) : (2 + Math.random()*4),
@@ -922,8 +825,8 @@
     wctx.restore();
   }
 
-  // ====== toys (simple pendulum) ======
-  const toys = [];
+  // ====== toys (pendulum) ======
+  const toys=[];
   function addToy(id, className, anchorX, anchorY){
     const el=document.createElement("div");
     el.className=`toy ${className}`;
@@ -958,8 +861,6 @@
 
     toys.push(toy);
   }
-
-  // Always include dice + freshener (you can later tie these to achievements)
   addToy("dice","dice", 0.50, 0.03);
   addToy("freshener","freshener", 0.58, 0.035);
 
@@ -975,15 +876,12 @@
       t.angle = clamp(t.angle, -1.2, 1.2);
     }
 
-    // render
     const w=innerWidth, h=innerHeight;
     for(const t of toys){
       const x = t.ax*w;
       const y = t.ay*h;
-      const px = x;
-      const py = y;
-      t.el.style.left = (px - 22) + "px";
-      t.el.style.top  = (py + 12) + "px";
+      t.el.style.left = (x - 22) + "px";
+      t.el.style.top  = (y + 12) + "px";
       t.el.style.transform = `rotate(${t.angle}rad) translateY(${t.len}px)`;
       t.el.style.opacity = "0.95";
     }
@@ -991,6 +889,7 @@
 
   // ====== hazard modal ======
   let hazardActive=false;
+
   function openHazardModal(info){
     hazardActive=true;
     state.running=false; saveState();
@@ -1023,7 +922,7 @@
     closeHazardModal();
   });
   modalDetour.addEventListener("click", ()=>{
-    const newId = state.routeId==="main" ? "south" : "main";
+    const newId = state.routeId==="main" ? "detour" : "main";
     switchRoute(newId, true);
     closeHazardModal();
     state.running=true; saveState();
@@ -1034,14 +933,15 @@
   // ====== milestones + landmarks ======
   function waypointReached(i){
     const wp=route.waypoints[i]; if(!wp) return;
-    if(wp.state && wp.state!==state.lastState){
-      toast(`<b>State line!</b> Entered <b>${safeText(wp.state)}</b>.`,3200);
-      pushLog(`🗺️ Crossed into ${wp.state}.`);
-      state.lastState=wp.state;
+
+    if(wp.zone && wp.zone!==state.lastZone){
+      toast(`<b>Zone line!</b> Entered <b>${safeText(wp.zone)}</b>.`,3200);
+      pushLog(`🗺️ Crossed into ${wp.zone}.`);
+      state.lastZone=wp.zone;
     }
     if(wp.tier==="major"){
       toast(`🏙️ <b>Major stop:</b> ${safeText(wp.name)}`,3600);
-      pushLog(`🏙️ Major city: ${wp.name}.`);
+      pushLog(`🏙️ Major stop: ${wp.name}.`);
     } else {
       pushLog(`Passed ${wp.name}.`);
     }
@@ -1056,7 +956,6 @@
     for(const lm of LANDMARKS){
       const d=haversine(pos,lm);
       if(d<=lm.radius_m){
-        // lightweight: log once per session
         const key="LM_"+lm.name;
         if(state[key]) continue;
         state[key]=true; saveState();
@@ -1088,7 +987,6 @@
     }
     fitRouteMap();
     renderRouteList();
-    updateStaticMap(true);
     saveState();
   }
 
@@ -1115,8 +1013,8 @@
 
     if(state.wpIndex>=segments.length){
       state.running=false;
-      toast(`🎉 <b>Arrived near NYC.</b> Trip complete!`,6000);
-      pushLog("🎉 Arrived near NYC. Trip complete!");
+      toast(`🎉 <b>Arrived at Pineshade Summit.</b> Trip complete!`,6000);
+      pushLog("🎉 Arrived at Pineshade Summit. Trip complete!");
     }
     saveState();
   }
@@ -1133,7 +1031,269 @@
     state.lastRealMs=now; saveState();
   }
 
-  // ====== map projection (Web Mercator for Google Static + overlay) ======
+  // ====== procedural scene (no real images) ======
+  let activeScene="A";
+  let sceneStateA={key:"", seed:1};
+  let sceneStateB={key:"", seed:2};
+  let lastSceneUpdate=0;
+
+  function biomeForPos(){
+    // Blend between segment biomes based on t
+    const seg = segments[state.wpIndex] || null;
+    if(!seg) return {a:"mountain", b:"mountain", blend:0};
+    const a = seg.a.biome || "valley";
+    const b = seg.b.biome || a;
+    return {a,b,blend:clamp(state.t,0,1)};
+  }
+
+  function drawRoad(ctx, time, wind){
+    const w=innerWidth,h=innerHeight;
+    // Road trapezoid
+    const horizonY = h*0.46;
+    const roadTopW = w*0.20;
+    const roadBotW = w*0.90;
+
+    const sway = Math.sin(time*0.0007)* (0.02 + clamp(wind/80,0,1)*0.05);
+    const cx = w*0.5 + sway*w*0.12;
+
+    ctx.save();
+    ctx.fillStyle="rgba(0,0,0,.25)";
+    ctx.beginPath();
+    ctx.moveTo(cx-roadTopW/2, horizonY);
+    ctx.lineTo(cx+roadTopW/2, horizonY);
+    ctx.lineTo(cx+roadBotW/2, h);
+    ctx.lineTo(cx-roadBotW/2, h);
+    ctx.closePath();
+    ctx.fill();
+
+    // lane lines
+    const dash = (time*0.08) % 40;
+    ctx.strokeStyle="rgba(255,255,255,.22)";
+    ctx.lineWidth=2;
+    for(let i=0;i<18;i++){
+      const y = horizonY + i*26 + dash;
+      const t = (y-horizonY)/(h-horizonY);
+      const x1 = cx - (roadTopW/2)*(1-t) - (roadBotW/2)*t + w*0.01;
+      const x2 = cx + (roadTopW/2)*(1-t) + (roadBotW/2)*t - w*0.01;
+      const mid = (x1+x2)/2;
+      ctx.beginPath();
+      ctx.moveTo(mid, y);
+      ctx.lineTo(mid, y+14);
+      ctx.stroke();
+    }
+
+    // subtle vignettes
+    ctx.fillStyle="rgba(0,0,0,.18)";
+    ctx.fillRect(0,horizonY,w,h-horizonY);
+
+    ctx.restore();
+  }
+
+  function drawMountains(ctx, color, amp, seed, time){
+    const w=innerWidth,h=innerHeight;
+    const horizonY=h*0.46;
+    const rng=mulberry32(seed);
+    ctx.save();
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.moveTo(0,horizonY+40);
+    let x=0;
+    while(x<=w){
+      const n = (rng()-0.5)*2;
+      const y = horizonY + 40 + Math.sin((x/w)*Math.PI*2 + time*0.00015)*(amp*0.35) + n*amp;
+      ctx.lineTo(x, y);
+      x += 40 + rng()*60;
+    }
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSky(ctx, top, bottom){
+    const w=innerWidth,h=innerHeight;
+    const g=ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,w,h);
+  }
+
+  function drawScene(ctx, sceneState, time){
+    const {a,b,blend} = biomeForPos();
+    const seed = sceneState.seed;
+
+    // pick palette by biome A/B and blend it
+    const pal = (biome)=>{
+      switch(biome){
+        case "bay": return {sky1:"rgba(40,70,110,1)", sky2:"rgba(12,18,30,1)", hill1:"rgba(10,14,22,1)", hill2:"rgba(18,24,34,1)"};
+        case "city": return {sky1:"rgba(30,55,95,1)", sky2:"rgba(10,14,24,1)", hill1:"rgba(12,16,26,1)", hill2:"rgba(20,24,34,1)"};
+        case "port": return {sky1:"rgba(32,60,85,1)", sky2:"rgba(12,16,26,1)", hill1:"rgba(12,16,24,1)", hill2:"rgba(18,24,32,1)"};
+        case "hills": return {sky1:"rgba(35,65,90,1)", sky2:"rgba(10,14,22,1)", hill1:"rgba(14,18,26,1)", hill2:"rgba(20,26,34,1)"};
+        case "valley": return {sky1:"rgba(45,85,120,1)", sky2:"rgba(12,18,28,1)", hill1:"rgba(14,18,24,1)", hill2:"rgba(20,26,32,1)"};
+        case "foothills": return {sky1:"rgba(35,70,105,1)", sky2:"rgba(12,18,28,1)", hill1:"rgba(12,16,22,1)", hill2:"rgba(18,22,28,1)"};
+        case "mountain": return {sky1:"rgba(55,95,130,1)", sky2:"rgba(10,14,22,1)", hill1:"rgba(10,14,20,1)", hill2:"rgba(16,20,28,1)"};
+        default: return {sky1:"rgba(45,85,120,1)", sky2:"rgba(12,18,28,1)", hill1:"rgba(14,18,24,1)", hill2:"rgba(20,26,32,1)"};
+      }
+    };
+
+    const pa=pal(a), pb=pal(b);
+    const mix = (c1,c2,t)=>{
+      // very tiny parser for rgba(r,g,b,a)
+      const p = (s)=>s.match(/rgba\(([^)]+)\)/)[1].split(",").map(x=>parseFloat(x));
+      const A=p(c1), B=p(c2);
+      const r=A[0]+(B[0]-A[0])*t;
+      const g=A[1]+(B[1]-A[1])*t;
+      const b=A[2]+(B[2]-A[2])*t;
+      const a=A[3]+(B[3]-A[3])*t;
+      return `rgba(${r.toFixed(1)},${g.toFixed(1)},${b.toFixed(1)},${a.toFixed(3)})`;
+    };
+
+    const sky1=mix(pa.sky1,pb.sky1,blend);
+    const sky2=mix(pa.sky2,pb.sky2,blend);
+    const hill1=mix(pa.hill1,pb.hill1,blend);
+    const hill2=mix(pa.hill2,pb.hill2,blend);
+
+    // fog factor based on weather mode
+    const fog = (wxMode==="rain" ? 0.14 : wxMode==="snow" ? 0.22 : 0.08) + wxIntensity*0.12;
+
+    // sky + sun glow
+    drawSky(ctx, sky1, sky2);
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = "rgba(255,220,160,1)";
+    ctx.beginPath();
+    ctx.arc(innerWidth*0.72, innerHeight*0.18, 120 + Math.sin(time*0.0007)*10, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // mountains layers
+    drawMountains(ctx, hill1, 18, seed^0x1111, time);
+    drawMountains(ctx, hill2, 28, seed^0x2222, time);
+
+    // biome-specific silhouettes
+    const w=innerWidth,h=innerHeight;
+    const horizonY=h*0.46;
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+
+    if(a==="bay" || b==="bay"){
+      // water band
+      ctx.fillStyle="rgba(10,18,28,.55)";
+      ctx.fillRect(0,horizonY+40,w,80);
+      // bridge-ish line
+      ctx.strokeStyle="rgba(255,255,255,.10)";
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(w*0.18,horizonY+58);
+      ctx.lineTo(w*0.82,horizonY+58);
+      ctx.stroke();
+      for(let i=0;i<8;i++){
+        const x=w*(0.22+i*0.08);
+        ctx.beginPath();
+        ctx.moveTo(x,horizonY+58);
+        ctx.lineTo(x,horizonY+34 - Math.sin(time*0.0008+i)*3);
+        ctx.stroke();
+      }
+    }
+    if(a==="city" || b==="city" || a==="port" || b==="port"){
+      // skyline
+      const rng=mulberry32(seed^0x3333);
+      ctx.fillStyle="rgba(0,0,0,.35)";
+      for(let i=0;i<26;i++){
+        const x = rng()*w;
+        const bw = 20 + rng()*70;
+        const bh = 40 + rng()*160;
+        ctx.fillRect(x, horizonY - bh + 30, bw, bh);
+      }
+      // occasional lights
+      ctx.fillStyle="rgba(255,240,200,.06)";
+      for(let i=0;i<120;i++){
+        const x=rng()*w, y=(horizonY-180)+rng()*190;
+        ctx.fillRect(x,y,1,1);
+      }
+    }
+    if(a==="valley" || b==="valley" || a==="hills" || b==="hills"){
+      // fields
+      ctx.strokeStyle="rgba(255,255,255,.05)";
+      ctx.lineWidth=1;
+      for(let i=0;i<24;i++){
+        const y=horizonY+90+i*10;
+        ctx.beginPath();
+        ctx.moveTo(0,y);
+        ctx.lineTo(w,y + Math.sin(time*0.0004+i)*3);
+        ctx.stroke();
+      }
+    }
+    if(a==="mountain" || b==="mountain" || a==="foothills" || b==="foothills"){
+      // trees line
+      const rng=mulberry32(seed^0x4444);
+      ctx.fillStyle="rgba(0,0,0,.32)";
+      for(let i=0;i<80;i++){
+        const x=rng()*w;
+        const th=16 + rng()*42;
+        const sway = Math.sin(time*0.001 + i)* (0.6 + clamp(wxWindMph/80,0,1)*2);
+        ctx.beginPath();
+        ctx.moveTo(x,horizonY+120);
+        ctx.lineTo(x-8+sway,horizonY+120-th);
+        ctx.lineTo(x+8+sway,horizonY+120);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // fog overlay
+    ctx.globalAlpha = fog;
+    ctx.fillStyle="rgba(255,255,255,1)";
+    ctx.fillRect(0,0,w,h);
+
+    ctx.restore();
+
+    // road + subtle motion
+    drawRoad(ctx, time, wxWindMph);
+
+    // subtle grain
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle="rgba(255,255,255,1)";
+    for(let i=0;i<140;i++){
+      const x=(seed*97 + i*37 + time*0.01) % w;
+      const y=(seed*53 + i*71) % h;
+      ctx.fillRect(x,y,1,1);
+    }
+    ctx.restore();
+  }
+
+  function setSceneSmooth(newKey){
+    // Assign new scene to inactive layer, then swap opacity
+    const seed = (seedFrom(currentPos().lat,currentPos().lng) ^ (state.wpIndex*99991) ^ (Math.floor(state.simTimeMs/60000))) >>> 0;
+
+    if(activeScene==="A"){
+      sceneStateB = {key:newKey, seed};
+      sceneB.style.opacity="1";
+      sceneA.style.opacity="0";
+      activeScene="B";
+    } else {
+      sceneStateA = {key:newKey, seed};
+      sceneA.style.opacity="1";
+      sceneB.style.opacity="0";
+      activeScene="A";
+    }
+  }
+
+  function updateScene(nowMs){
+    if(nowMs - lastSceneUpdate < SCENE_REFRESH_MS) return;
+    lastSceneUpdate = nowMs;
+
+    const key = `${state.routeId}:${state.wpIndex}`;
+    const activeKey = (activeScene==="A") ? sceneStateA.key : sceneStateB.key;
+    if(key !== activeKey){
+      setSceneSmooth(key);
+    }
+  }
+
+  // ====== map projection (Web Mercator) ======
   function mercatorWorldXY(lat,lng,zoom){
     const sinLat=Math.sin(toRad(lat));
     const scale=256*Math.pow(2,zoom);
@@ -1149,22 +1309,19 @@
     return {lat,lng};
   }
 
-  // ====== map overlay sizing ======
   const mapCtx = mapOverlay.getContext("2d");
   function resizeMapOverlay(){
     const dpr=window.devicePixelRatio||1;
     const rect=mapOverlay.getBoundingClientRect();
-    mapOverlay.width=Math.floor(rect.width*dpr);
-    mapOverlay.height=Math.floor(rect.height*dpr);
+    const w=Math.max(1,rect.width), h=Math.max(1,rect.height);
+    mapOverlay.width=Math.floor(w*dpr);
+    mapOverlay.height=Math.floor(h*dpr);
     mapCtx.setTransform(dpr,0,0,dpr,0,0);
     drawMapOverlay();
   }
-  // initial after layout
   setTimeout(resizeMapOverlay, 50);
 
-  // ====== map view state ======
   function fitRouteMap(){
-    // Fit route bounds into panel rect, pick zoom heuristic
     const wps=route.waypoints;
     let minLat=999,maxLat=-999,minLng=999,maxLng=-999;
     for(const p of wps){
@@ -1175,105 +1332,35 @@
     const centerLng=(minLng+maxLng)/2;
     state.mapCenter={lat:centerLat,lng:centerLng};
 
-    // crude zoom guess based on span
     const latSpan=maxLat-minLat;
     const lngSpan=maxLng-minLng;
     const span=Math.max(latSpan, lngSpan);
-    let z=4;
-    if(span<20) z=5;
-    if(span<12) z=6;
-    if(span<7) z=7;
-    if(span<4) z=8;
+    let z=7;
+    if(span>4) z=6;
+    if(span>7) z=5;
+    if(span>12) z=4;
     state.mapZoom = clamp(z, 1, 10);
     saveState();
   }
+  if(!state.mapCenter || !Number.isFinite(state.mapCenter.lat)) fitRouteMap();
 
   function setMapZoom(z){
     state.mapZoom = clamp(z, 1, 10);
     saveState();
-    updateStaticMap(true);
     drawMapOverlay();
   }
   function panMapByPixels(dx,dy){
     const rect=mapOverlay.getBoundingClientRect();
+    const w=rect.width, h=rect.height;
     const zoom=state.mapZoom;
     const center=state.mapCenter;
     const cxy=mercatorWorldXY(center.lat, center.lng, zoom);
-    // convert pixels into world units
     const nx = cxy.x - dx;
     const ny = cxy.y - dy;
     const ll = worldXYToLatLng(nx, ny, zoom);
     state.mapCenter = {lat: clamp(ll.lat,-85,85), lng: clamp(ll.lng,-180,180)};
     saveState();
-    updateStaticMap(true);
     drawMapOverlay();
-  }
-
-  // ====== Google Static Map (optional background) ======
-  let staticMapOk=false;
-  let lastStaticUrl="";
-  function buildStaticMapUrl(){
-    const key=apiKeyEl.value.trim();
-    if(!key) return null;
-    const rect=mapOverlay.getBoundingClientRect();
-    // Static Maps limits: size up to 640x640, so clamp and use scale=2 when we can.
-    const w=Math.max(320, Math.min(640, Math.round(rect.width)));
-    const h=Math.max(240, Math.min(640, Math.round(rect.height)));
-    const zoom=state.mapZoom;
-    const {lat,lng}=state.mapCenter;
-    const url=new URL("https://maps.googleapis.com/maps/api/staticmap");
-    url.searchParams.set("center", `${lat.toFixed(6)},${lng.toFixed(6)}`);
-    url.searchParams.set("zoom", String(zoom));
-    url.searchParams.set("size", `${w}x${h}`);
-    url.searchParams.set("scale", "2");
-    url.searchParams.set("maptype","roadmap");
-    url.searchParams.set("format","png");
-    url.searchParams.set("key", key);
-    return url.toString();
-  }
-
-  function updateStaticMap(force=false){
-    const style=mapStyleSel.value || "auto";
-    state.mapStyle = style;
-    saveState();
-
-    const wantsGoogle = (style==="google") || (style==="auto");
-    if(!wantsGoogle){
-      mapImg.style.display="none";
-      staticMapOk=false;
-      drawMapOverlay();
-      return;
-    }
-
-    const url=buildStaticMapUrl();
-    if(!url){ mapImg.style.display="none"; staticMapOk=false; drawMapOverlay(); return; }
-    if(!force && url===lastStaticUrl) return;
-
-    lastStaticUrl=url;
-    mapImg.onload=()=>{ staticMapOk=true; mapImg.style.display="block"; drawMapOverlay(); };
-    mapImg.onerror=()=>{ staticMapOk=false; mapImg.style.display="none"; drawMapOverlay(); };
-    mapImg.src=url;
-  }
-
-  // ====== map overlay drawing ======
-  let hoverStopIndex=null;
-  function drawSimpleGridBackground(w,h){
-    mapCtx.fillStyle="rgba(0,0,0,.18)";
-    mapCtx.fillRect(0,0,w,h);
-
-    mapCtx.strokeStyle="rgba(255,255,255,.06)";
-    mapCtx.lineWidth=1;
-    // lat/lng lines (every 30 degrees)
-    for(let lon=-180; lon<=180; lon+=30){
-      const p1=projectToMap({lat:-80,lng:lon});
-      const p2=projectToMap({lat:80,lng:lon});
-      mapCtx.beginPath(); mapCtx.moveTo(p1.x,p1.y); mapCtx.lineTo(p2.x,p2.y); mapCtx.stroke();
-    }
-    for(let lat=-60; lat<=60; lat+=30){
-      const p1=projectToMap({lat:lat,lng:-180});
-      const p2=projectToMap({lat:lat,lng:180});
-      mapCtx.beginPath(); mapCtx.moveTo(p1.x,p1.y); mapCtx.lineTo(p2.x,p2.y); mapCtx.stroke();
-    }
   }
 
   function projectToMap(ll){
@@ -1288,26 +1375,140 @@
     return {x,y};
   }
 
+  function drawSimpleGridBackground(w,h){
+    mapCtx.fillStyle="rgba(0,0,0,.18)";
+    mapCtx.fillRect(0,0,w,h);
+
+    mapCtx.strokeStyle="rgba(255,255,255,.06)";
+    mapCtx.lineWidth=1;
+    // long grid
+    for(let lon=-180; lon<=180; lon+=30){
+      const p1=projectToMap({lat:-80,lng:lon});
+      const p2=projectToMap({lat:80,lng:lon});
+      mapCtx.beginPath(); mapCtx.moveTo(p1.x,p1.y); mapCtx.lineTo(p2.x,p2.y); mapCtx.stroke();
+    }
+    for(let lat=-60; lat<=60; lat+=30){
+      const p1=projectToMap({lat:lat,lng:-180});
+      const p2=projectToMap({lat:lat,lng:180});
+      mapCtx.beginPath(); mapCtx.moveTo(p1.x,p1.y); mapCtx.lineTo(p2.x,p2.y); mapCtx.stroke();
+    }
+
+    // title
+    mapCtx.fillStyle="rgba(255,255,255,.10)";
+    mapCtx.font="12px system-ui";
+    mapCtx.fillText("Fictional map overlay (no tiles)", 10, 18);
+  }
+
+  // ====== route list + sampled wx for stops ======
+  const wxSampleData=new Map();
+  let wxSamplesInFlight=false;
+
+  function sampleIndices(){
+    const wps=route.waypoints;
+    const out=new Set();
+    for(let i=0;i<wps.length;i++){
+      if(i%2===0) out.add(i); // more frequent (short route)
+      if(wps[i].tier==="major"||wps[i].rare) out.add(i);
+    }
+    out.add(state.wpIndex);
+    out.add(state.wpIndex+1);
+    return [...out].filter(i=>i>=0 && i<wps.length).sort((a,b)=>a-b);
+  }
+
+  async function refreshWxSamples(){
+    if(wxSamplesInFlight) return;
+    wxSamplesInFlight=true;
+    try{
+      const wps=route.waypoints;
+      const simNow=state.simTimeMs;
+      const speedMps=mphToMps(state.speedMph);
+      const idxs=sampleIndices();
+
+      for(const idx of idxs){
+        const wp=wps[idx];
+        try{
+          const wx=await getWxForecast(wp.lat, wp.lng);
+          let tMs=simNow;
+          if(idx>state.wpIndex){
+            const dist=distanceMetersToWaypoint(idx);
+            tMs=simNow+(dist/speedMps)*1000;
+          }
+          const snap=wxAtTime(wx,tMs);
+          if(snap) wxSampleData.set(idx,snap);
+        }catch{}
+      }
+      updateRouteListWx();
+      drawMapOverlay();
+    } finally {
+      wxSamplesInFlight=false;
+    }
+  }
+
+  function findNearestSample(i){
+    if(wxSampleData.has(i)) return wxSampleData.get(i);
+    for(let k=1;k<=2;k++){
+      if(wxSampleData.has(i-k)) return wxSampleData.get(i-k);
+      if(wxSampleData.has(i+k)) return wxSampleData.get(i+k);
+    }
+    return null;
+  }
+
+  function updateRouteListWx(){
+    const wps=route.waypoints;
+    for(let i=0;i<wps.length;i++){
+      const el=document.getElementById("wxStop_"+i);
+      if(!el) continue;
+      const snap=findNearestSample(i);
+      if(!snap){ el.textContent="…"; continue; }
+      const tC=snap.tempC;
+      const tStr=(tC==null)?"—":(state.unit==="C"?`${tC.toFixed(0)}°C`:`${cToF(tC).toFixed(0)}°F`);
+      el.textContent = `${wxIcon(snap.mode, snap.windMph)} ${tStr}`;
+    }
+  }
+
+  function renderRouteList(){
+    const wps=route.waypoints;
+    routeList.innerHTML = wps.map((wp,i)=>{
+      const active = (i===state.wpIndex) ? "active" : "";
+      return `<div class="stop ${active}" data-i="${i}">
+        <div>
+          <b>${safeText(wp.name)}</b><br>
+          <small>${safeText(wp.zone||"")} ${wp.rare ? " • rare" : ""}${wp.tier==="major" ? " • major" : ""}</small>
+        </div>
+        <div class="wx" id="wxStop_${i}">…</div>
+      </div>`;
+    }).join("");
+
+    routeList.querySelectorAll(".stop").forEach(el=>{
+      el.addEventListener("click",()=>{
+        const i=Number(el.dataset.i);
+        if(Number.isFinite(i)){
+          const wp=route.waypoints[i];
+          state.mapCenter={lat:wp.lat,lng:wp.lng};
+          saveState();
+          drawMapOverlay();
+          toast(`<b>Map:</b> centered on ${safeText(wp.name)}`,2400);
+        }
+      });
+    });
+  }
+
+  // ====== map overlay drawing ======
+  let hoverStopIndex=null;
+
   function drawMapOverlay(){
     const rect=mapOverlay.getBoundingClientRect();
     const w=rect.width, h=rect.height;
     mapCtx.clearRect(0,0,w,h);
 
-    if(!staticMapOk){
-      drawSimpleGridBackground(w,h);
-    } else {
-      // subtle darken so route pops
-      mapCtx.fillStyle="rgba(0,0,0,.08)";
-      mapCtx.fillRect(0,0,w,h);
-    }
+    drawSimpleGridBackground(w,h);
 
-    // route polyline with temp coloring if available
+    // route polyline colored by temp
     const wps=route.waypoints;
     for(let i=0;i<wps.length-1;i++){
       const a=wps[i], b=wps[i+1];
       const pa=projectToMap(a), pb=projectToMap(b);
 
-      // temp color fallback
       let col="rgba(255,255,255,.55)";
       const ta = wxSampleData.get(i)?.tempC;
       const tb = wxSampleData.get(i+1)?.tempC;
@@ -1338,7 +1539,6 @@
       const mode=snap?.mode ?? "none";
       const tC=snap?.tempC;
 
-      // marker
       mapCtx.fillStyle = Number.isFinite(tC) ? tempColorC(tC) : "rgba(255,255,255,.75)";
       mapCtx.strokeStyle = "rgba(0,0,0,.55)";
       mapCtx.lineWidth=2;
@@ -1349,7 +1549,6 @@
       mapCtx.fill();
       mapCtx.stroke();
 
-      // icon text
       mapCtx.font="12px system-ui";
       mapCtx.fillStyle="rgba(255,255,255,.92)";
       mapCtx.fillText(wxIcon(mode, wind), p.x+8, p.y+4);
@@ -1361,10 +1560,9 @@
       }
     }
 
-    // current position marker (CLEAR)
+    // current position marker
     const pos=currentPos();
     const pc=projectToMap(pos);
-    // pulse
     const pulse = 7 + 3*Math.sin(performance.now()/220);
     mapCtx.strokeStyle="rgba(255,255,255,.9)";
     mapCtx.lineWidth=2;
@@ -1372,12 +1570,10 @@
     mapCtx.fillStyle="rgba(255,255,255,1)";
     mapCtx.beginPath(); mapCtx.arc(pc.x,pc.y,4.5,0,Math.PI*2); mapCtx.fill();
 
-    // label
     mapCtx.font="12px system-ui";
     mapCtx.fillStyle="rgba(255,255,255,.95)";
     mapCtx.fillText("YOU", pc.x+10, pc.y-8);
 
-    // tip box from hover
     if(hoverStopIndex!=null){
       mapTip.style.display="block";
     } else {
@@ -1385,37 +1581,7 @@
     }
   }
 
-  // ====== route list (Google maps-ish) ======
-  function renderRouteList(){
-    const wps=route.waypoints;
-    routeList.innerHTML = wps.map((wp,i)=>{
-      const active = (i===state.wpIndex) ? "active" : "";
-      return `<div class="stop ${active}" data-i="${i}">
-        <div>
-          <b>${safeText(wp.name)}</b><br>
-          <small>${wp.state || ""}${wp.rare ? " • rare" : ""}${wp.tier==="major" ? " • major" : ""}</small>
-        </div>
-        <div class="wx" id="wxStop_${i}">…</div>
-      </div>`;
-    }).join("");
-
-    routeList.querySelectorAll(".stop").forEach(el=>{
-      el.addEventListener("click",()=>{
-        const i=Number(el.dataset.i);
-        if(Number.isFinite(i)){
-          // Pan map to stop
-          const wp=route.waypoints[i];
-          state.mapCenter={lat:wp.lat,lng:wp.lng};
-          saveState();
-          updateStaticMap(true);
-          drawMapOverlay();
-          toast(`<b>Map:</b> centered on ${safeText(wp.name)}`,2400);
-        }
-      });
-    });
-  }
-
-  // ====== map mouse interaction (pan + hover) ======
+  // map mouse interaction
   let mapDragging=false;
   let mapDragStart=null;
 
@@ -1433,8 +1599,7 @@
   mapOverlay.addEventListener("pointerdown",(e)=>{
     mapDragging=true;
     mapOverlay.setPointerCapture(e.pointerId);
-    const rect=mapOverlay.getBoundingClientRect();
-    mapDragStart={x:e.clientX, y:e.clientY, rect};
+    mapDragStart={x:e.clientX, y:e.clientY};
   });
   mapOverlay.addEventListener("pointermove",(e)=>{
     const rect=mapOverlay.getBoundingClientRect();
@@ -1457,7 +1622,7 @@
     }
     hoverStopIndex=picked.i;
     const wp=route.waypoints[picked.i];
-    const snap=wxSampleData.get(picked.i);
+    const snap=findNearestSample(picked.i);
     const wind=snap?.windMph ?? 0;
     const mode=snap?.mode ?? "none";
     const precip=snap?.precip ?? 0;
@@ -1469,70 +1634,6 @@
   });
   mapOverlay.addEventListener("pointerup",()=>{ mapDragging=false; mapDragStart=null; });
   mapOverlay.addEventListener("pointercancel",()=>{ mapDragging=false; mapDragStart=null; });
-
-  // ====== weather sampling for stops ======
-  // We sample every N stops for performance, but update route list display for all using nearest sample.
-  const wxSampleData=new Map(); // idx -> snap
-  let lastWxSamplesAt=0;
-
-  function sampleIndices(){
-    const wps=route.waypoints;
-    const out=new Set();
-    for(let i=0;i<wps.length;i++){
-      if(i%3===0) out.add(i);
-      if(wps[i].tier==="major"||wps[i].rare) out.add(i);
-    }
-    // always include current and next
-    out.add(state.wpIndex);
-    out.add(state.wpIndex+1);
-    return [...out].filter(i=>i>=0 && i<wps.length).sort((a,b)=>a-b);
-  }
-
-  async function refreshWxSamples(){
-    const wps=route.waypoints;
-    const simNow=state.simTimeMs;
-    const speedMps=mphToMps(state.speedMph);
-    const idxs=sampleIndices();
-
-    for(const idx of idxs){
-      const wp=wps[idx];
-      try{
-        const wx=await getWxForecast(wp.lat, wp.lng);
-        let tMs=simNow;
-        if(idx>state.wpIndex){
-          const dist=distanceMetersToWaypoint(idx);
-          tMs=simNow+(dist/speedMps)*1000;
-        }
-        const snap=wxAtTime(wx,tMs);
-        if(snap) wxSampleData.set(idx,snap);
-      }catch{}
-    }
-    updateRouteListWx();
-    drawMapOverlay();
-  }
-
-  function findNearestSample(i){
-    if(wxSampleData.has(i)) return wxSampleData.get(i);
-    // search outward a bit
-    for(let k=1;k<=3;k++){
-      if(wxSampleData.has(i-k)) return wxSampleData.get(i-k);
-      if(wxSampleData.has(i+k)) return wxSampleData.get(i+k);
-    }
-    return null;
-  }
-
-  function updateRouteListWx(){
-    const wps=route.waypoints;
-    for(let i=0;i<wps.length;i++){
-      const el=document.getElementById("wxStop_"+i);
-      if(!el) continue;
-      const snap=findNearestSample(i);
-      if(!snap){ el.textContent="…"; continue; }
-      const tC=snap.tempC;
-      const tStr=(tC==null)?"—":(state.unit==="C"?`${tC.toFixed(0)}°C`:`${cToF(tC).toFixed(0)}°F`);
-      el.textContent = `${wxIcon(snap.mode, snap.windMph)} ${tStr}`;
-    }
-  }
 
   // ====== HUD updates ======
   function updateHud(){
@@ -1551,26 +1652,30 @@
   }
 
   // ====== hazards checking ======
+  let lastHazardCheck=0;
+  let hazardsInFlight=false;
+
   async function checkHazards(nowMs){
     if(!state.hazardMode || !state.running || hazardActive) return;
     if(nowMs - lastHazardCheck < HAZARD_CHECK_EVERY_MS) return;
+    if(hazardsInFlight) return;
+    hazardsInFlight=true;
     lastHazardCheck = nowMs;
 
-    const wps=route.waypoints;
-    const speedMps=mphToMps(state.speedMph);
-    const simNow=state.simTimeMs;
+    try{
+      const wps=route.waypoints;
+      const speedMps=mphToMps(state.speedMph);
+      const simNow=state.simTimeMs;
 
-    // look ahead among sampled indices
-    const idxs = sampleIndices().filter(i=>i>state.wpIndex);
-    for(const idx of idxs){
-      const distM=distanceMetersToWaypoint(idx);
-      const distMiles=distM/1609.344;
-      if(distMiles > HAZARD_LOOKAHEAD_MILES) break;
+      const idxs = sampleIndices().filter(i=>i>state.wpIndex);
+      for(const idx of idxs){
+        const distM=distanceMetersToWaypoint(idx);
+        const distMiles=distM/1609.344;
+        if(distMiles > HAZARD_LOOKAHEAD_MILES) break;
 
-      const etaHere=simNow+(distM/speedMps)*1000;
-      const wp=wps[idx];
+        const etaHere=simNow+(distM/speedMps)*1000;
+        const wp=wps[idx];
 
-      try{
         const wx=await getWxForecast(wp.lat, wp.lng);
         const snap=wxAtTime(wx, etaHere);
         if(!snap) continue;
@@ -1587,14 +1692,20 @@
           openHazardModal({type,title,where:wp.name,when:fmtTime(etaHere),precip:snap.precip,windMph:snap.windMph,tempC:snap.tempC});
           return;
         }
-      } catch {}
+      }
+    } finally {
+      hazardsInFlight=false;
     }
   }
 
   // ====== main weather update (HUD + particles) ======
   let lastWxUpdate=0;
+  let wxInFlight=false;
+
   async function updateWeather(nowMs){
     if(nowMs-lastWxUpdate<25000) return;
+    if(wxInFlight) return;
+    wxInFlight=true;
     lastWxUpdate=nowMs;
 
     const pos=currentPos();
@@ -1602,11 +1713,13 @@
       const wx=await getWxForecast(pos.lat,pos.lng);
       const snap=wxAtTime(wx,state.simTimeMs);
       if(!snap) return;
+
       wxMode=snap.mode; wxIntensity=snap.intensity; wxWindMph=snap.windMph;
       spawnParticles();
 
       const tempStr=(snap.tempC==null)?"—":(state.unit==="C"?`${snap.tempC.toFixed(0)}°C`:`${cToF(snap.tempC).toFixed(0)}°F`);
-      hudWx.textContent = `${wxIcon(snap.mode, snap.windMph)} ${snap.mode} • ${tempStr} • wind ${snap.windMph.toFixed(0)} mph`;
+      const src = snap.synthetic ? " (synthetic)" : "";
+      hudWx.textContent = `${wxIcon(snap.mode, snap.windMph)} ${snap.mode} • ${tempStr} • wind ${snap.windMph.toFixed(0)} mph${src}`;
 
       // If wind is currently extreme, stop too
       if(state.hazardMode && state.running && snap.windMph>=HIGH_WIND_MPH){
@@ -1614,60 +1727,21 @@
       }
     }catch{
       hudWx.textContent="Weather unavailable";
-    }
-  }
-
-  // ====== Street View update loop ======
-  let lastSVUpdate=0;
-  async function updateStreetView(nowMs){
-    if(state.wpIndex>=segments.length) return;
-    const interval = clamp(900, 2800*(50/state.speedMph), 2800);
-    if(nowMs-lastSVUpdate<interval) return;
-    lastSVUpdate=nowMs;
-
-    try{
-      await ensureStreetView();
-      const seg=segments[state.wpIndex];
-      const pos=currentPos();
-      const lookT=clamp(state.t+0.03,0,1);
-      const ahead={lat:seg.a.lat+(seg.b.lat-seg.a.lat)*lookT,lng:seg.a.lng+(seg.b.lng-seg.a.lng)*lookT};
-      const hdg=headingDeg(pos,ahead);
-
-      const panoData = await new Promise((resolve,reject)=>{
-        svService.getPanorama({location:pos,radius:120,source:google.maps.StreetViewSource.OUTDOOR},(data,status)=>{
-          if(status==="OK" && data) resolve(data);
-          else reject(new Error("Coverage gap"));
-        });
-      });
-
-      const keepUserView = (performance.now() < userLookUntil);
-      const active = getActivePano();
-      const prev = active?.getPov?.() || null;
-
-      const pov = keepUserView && prev ? prev : {heading:hdg, pitch:0};
-      await setPanoramaSmooth(panoData.location.pano, pov);
-
-      statusEl.innerHTML = `<span class="ok"><b>Driving…</b></span> <span style="opacity:.9">(${safeText(route.name)})</span>`;
-
-    } catch(e){
-      const msg = (e && e.message) ? String(e.message) : "Error";
-      if(msg.toLowerCase().includes("key") || msg.toLowerCase().includes("auth")){
-        statusEl.innerHTML = `<span class="bad"><b>Street View blocked:</b> ${safeText(msg)}</span> <span class="warn">Fix referrers + enable Maps JavaScript API.</span>`;
-        state.running=false; saveState();
-        return;
-      }
-      statusEl.innerHTML = `<span class="warn"><b>Street View gap</b> — skipping forward…</span>`;
-      advance(18);
+    } finally {
+      wxInFlight=false;
     }
   }
 
   // ====== map buttons ======
-  mapFitBtn.addEventListener("click", ()=>{ fitRouteMap(); updateStaticMap(true); drawMapOverlay(); toast(`<b>Map:</b> fit route`,2000); });
+  mapFitBtn.addEventListener("click", ()=>{
+    fitRouteMap(); drawMapOverlay();
+    toast(`<b>Map:</b> fit route`,2000);
+  });
   mapWorldBtn.addEventListener("click", ()=>{
     state.mapCenter={lat:0,lng:0};
     state.mapZoom=1;
     saveState();
-    updateStaticMap(true); drawMapOverlay();
+    drawMapOverlay();
     toast(`<b>Map:</b> world view`,2000);
   });
   mapZoomInBtn.addEventListener("click", ()=> setMapZoom(state.mapZoom+1));
@@ -1677,7 +1751,7 @@
     mapPanel.classList.toggle("fullscreen", state.mapFullscreen);
     mapFullBtn.textContent = state.mapFullscreen ? "Min" : "Full";
     saveState();
-    setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+    setTimeout(resizeMapOverlay, 40);
   });
 
   // ====== UI bar buttons ======
@@ -1698,7 +1772,7 @@
     mapPanel.classList.toggle("hidden", !state.mapVisible);
     saveState();
     if(state.mapVisible){
-      setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+      setTimeout(resizeMapOverlay, 40);
     }
   });
   btnHideAll.addEventListener("click", ()=>{
@@ -1710,20 +1784,13 @@
     state.uiHidden = false;
     wrap.classList.remove("uiHidden");
     saveState();
-    setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+    setTimeout(resizeMapOverlay, 40);
   });
 
   hudCollapse.addEventListener("click", ()=> btnHud.click());
   panelCollapse.addEventListener("click", ()=> btnPanel.click());
 
   // ====== controls wiring ======
-  rememberKeyEl.addEventListener("change", ()=>{
-    state.rememberKey = rememberKeyEl.checked;
-    if(!state.rememberKey) state.apiKey="";
-    saveState();
-    toast(state.rememberKey ? "Will remember key on this device." : "Won’t store key.");
-  });
-
   speedSlider.addEventListener("input", ()=>{
     const v=Number(speedSlider.value);
     state.speedMph=v;
@@ -1744,6 +1811,7 @@
     switchRoute(routeSel.value, true);
     toast(`<b>Route:</b> ${safeText(ROUTES[state.routeId].name)}`,2600);
     pushLog(`🧭 Switched route to ${ROUTES[state.routeId].name}.`);
+    refreshWxSamples();
   });
 
   offlineToggle.addEventListener("change", ()=>{
@@ -1758,27 +1826,11 @@
     pushLog(state.hazardMode ? "⚠️ Hazard warnings enabled." : "⚠️ Hazard warnings disabled.");
   });
 
-  mapStyleSel.addEventListener("change", ()=>{
-    updateStaticMap(true);
-    toast(`<b>Map style:</b> ${safeText(mapStyleSel.value)}`, 2000);
-  });
-
-  startBtn.addEventListener("click", async ()=>{
-    state.rememberKey = rememberKeyEl.checked;
-    if(state.rememberKey) state.apiKey = apiKeyEl.value.trim();
-    saveState();
-
-    try{
-      await ensureStreetView();
-      state.running=true; saveState();
-      toast(`<b>Started driving.</b>`,2200);
-      pushLog("▶️ Started driving.");
-      updateStaticMap(true);
-      refreshWxSamples();
-    } catch(e){
-      statusEl.innerHTML = `<span class="bad"><b>Error:</b> ${safeText(e.message||"Error")}</span> <span class="warn">Check key + referrers.</span>`;
-      toast(`<b>Street View not ready.</b> Check API key.`, 3200);
-    }
+  startBtn.addEventListener("click", ()=>{
+    state.running=true; saveState();
+    toast(`<b>Started driving.</b>`,2200);
+    pushLog("▶️ Started driving.");
+    refreshWxSamples();
   });
 
   pauseBtn.addEventListener("click", ()=>{
@@ -1788,30 +1840,22 @@
   });
 
   resetBtn.addEventListener("click", ()=>{
-    const key=apiKeyEl.value.trim();
     localStorage.removeItem(STORE_KEY);
     state=defaultState();
-    state.rememberKey = rememberKeyEl.checked;
-    state.apiKey = state.rememberKey ? key : "";
     state.routeId = routeSel.value;
     state.unit = unitSel.value;
     state.speedMph = Number(speedSlider.value);
     state.offlineContinue = offlineToggle.checked;
     state.hazardMode = hazardToggle.checked;
-    state.mapStyle = mapStyleSel.value;
     state.simTimeMs = Date.now();
     state.lastRealMs = Date.now();
     saveState();
 
-    apiKeyEl.value=state.apiKey||"";
     rebuildRoute();
     fitRouteMap();
-    resizeMapOverlay();
-    updateStaticMap(true);
-
+    resizeAll();
     toast(`<b>Reset.</b> Back to start.`,2600);
     pushLog("🔄 Reset trip.");
-    statusEl.innerHTML = `Paste your <b>Google Maps API key</b> below and press <b>Start</b>. <span class="warn">Don’t commit your key.</span>`;
     refreshWxSamples();
   });
 
@@ -1825,7 +1869,7 @@
       state.uiHidden = !state.uiHidden;
       wrap.classList.toggle("uiHidden", state.uiHidden);
       saveState();
-      if(!state.uiHidden) setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+      if(!state.uiHidden) setTimeout(resizeMapOverlay, 40);
     }
     if(e.key.toLowerCase()==="m"){
       e.preventDefault(); btnMap.click();
@@ -1841,43 +1885,27 @@
     }
     if(e.key==="+"||e.key==="="){
       e.preventDefault();
-      speedSlider.value=String(clamp(Number(speedSlider.value)+5,50,MAX_SPEED));
+      speedSlider.value=String(clamp(Number(speedSlider.value)+5,MIN_SPEED,MAX_SPEED));
       speedSlider.dispatchEvent(new Event("input"));
     }
     if(e.key==="-"||e.key==="_"){
       e.preventDefault();
-      speedSlider.value=String(clamp(Number(speedSlider.value)-5,50,MAX_SPEED));
+      speedSlider.value=String(clamp(Number(speedSlider.value)-5,MIN_SPEED,MAX_SPEED));
       speedSlider.dispatchEvent(new Event("input"));
     }
   });
 
-  // ====== map init ======
-  // set initial zoom/center sensibly
-  if(!state.mapCenter || !Number.isFinite(state.mapCenter.lat)){
-    fitRouteMap();
-  }
-  function mapInit(){
-    resizeMapOverlay();
-    updateStaticMap(true);
-    refreshWxSamples();
-  }
-  setTimeout(mapInit, 80);
-
-  // ====== loop ======
-  let lastFrame=performance.now();
+  // ====== live map refresh ======
   let lastMiniUpdate=0;
-  let lastHazardCheck=0;
-  let lastWxSamplesAt=0;
-
   function updateMapLive(nowMs){
-    // refresh static map periodically when visible (only if google static is enabled)
     if(!state.mapVisible) return;
     if(nowMs-lastMiniUpdate<30000) return;
     lastMiniUpdate=nowMs;
     refreshWxSamples();
-    updateStaticMap(false);
+    drawMapOverlay();
   }
 
+  // ====== simulate tick ======
   function advanceSim(dt){
     if(state.running){
       state.simTimeMs += dt*1000;
@@ -1886,19 +1914,29 @@
     }
   }
 
-  async function frame(now){
+  // ====== loop ======
+  let lastFrame=performance.now();
+
+  function frame(now){
     const dt=Math.min(0.25,(now-lastFrame)/1000);
     lastFrame=now;
 
+    // update driving + visuals
     advanceSim(dt);
+
+    // scene drawing (both layers so fade looks clean)
+    updateScene(now);
+    drawScene(sctxA, sceneStateA, performance.now());
+    drawScene(sctxB, sceneStateB, performance.now());
+
     drawWeather(dt);
     updateToys(dt);
     updateHud();
     updateMapLive(now);
 
-    await updateWeather(now);
-    await checkHazards(now);
-    await updateStreetView(now);
+    // async updates (guarded)
+    updateWeather(now);
+    checkHazards(now);
 
     requestAnimationFrame(frame);
   }
@@ -1912,18 +1950,15 @@
 
   // ====== first render ======
   renderLog();
-  if(!state.log.length) pushLog("Ready. Paste API key and click Start.");
+  if(!state.log.length) pushLog("Ready. Hit Start to drive Bayglass → Pineshade.");
   renderRouteList();
+  fitRouteMap();
+  resizeMapOverlay();
   refreshWxSamples();
   handleReturn();
   updateHud();
+  toast(`<b>Welcome.</b> No real-life imagery — just vibes.`, 3200);
   requestAnimationFrame(frame);
-
-  // ====== first time map background ======
-  setTimeout(()=>updateStaticMap(true), 300);
-
-  // ====== status hints ======
-  statusEl.innerHTML = `Paste your <b>Google Maps API key</b> below and press <b>Start</b>. <span class="warn">Don’t commit your key.</span>`;
 
 })();
 </script>
