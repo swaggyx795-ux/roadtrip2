@@ -19,90 +19,144 @@
     Rotate the key in Google Cloud, then paste the NEW key below.
   -->
   <style>
-    html,body{height:100%;margin:0;background:#05070b;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
-    #wrap{position:fixed;inset:0}
+    html,body{height:100%;margin:0;background:#0b0f14;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
+    #app{position:relative;width:100%;height:100%}
 
-    /* z-order layering */
-    #pano{position:absolute;inset:0;z-index:0}
-    #windshieldMask{position:absolute;inset:0;z-index:1;pointer-events:none}
-    #weatherCanvas{position:absolute;inset:0;z-index:2;pointer-events:none}
-    #interior{position:absolute;inset:0;z-index:3;pointer-events:none}
+    /* Street View fills the whole viewport */
+    #pano{position:absolute;inset:0}
 
-    #hud{position:absolute;left:16px;top:16px;z-index:4;max-width:min(520px,92vw);
-      background:rgba(10,16,24,.62);backdrop-filter:blur(10px);
-      border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px 12px}
-    #hud .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-    #hud b{color:#fff}
-    #hud p{margin:6px 0 0;font-size:12px;opacity:.9;line-height:1.25}
-
-    #panel{position:absolute;left:16px;bottom:16px;z-index:4;width:min(560px,92vw);
-      background:rgba(10,16,24,.62);backdrop-filter:blur(10px);
-      border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:12px;pointer-events:auto}
-    #panel h2{margin:0 0 8px;font-size:14px}
-    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    input[type="text"],input[type="password"]{flex:1;min-width:220px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
-      background:rgba(255,255,255,.06);color:#e8eef7;outline:none}
-    button{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
-      background:rgba(125,211,252,.14);color:#e8eef7;cursor:pointer}
-    button:hover{background:rgba(125,211,252,.22)}
-    .pill{font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.07);
-      border:1px solid rgba(255,255,255,.12)}
-    label{font-size:12px;opacity:.9}
-    #log{margin-top:10px;max-height:170px;overflow:auto;border-radius:12px;background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.08);padding:8px}
-    #log .item{font-size:12px;line-height:1.25;padding:6px 6px;border-bottom:1px solid rgba(255,255,255,.06)}
-    #log .item:last-child{border-bottom:none}
-
-    /* Soft vignette mask: emulate side windows */
-    .vignette{position:absolute;inset:0;
-      background:radial-gradient(1400px 800px at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,.35) 55%, rgba(0,0,0,.70) 100%);
+    /* Subtle vignette + windshield glass */
+    #vignette{position:absolute;inset:0;pointer-events:none;
+      background:radial-gradient(ellipse at center, rgba(0,0,0,0) 0%, rgba(0,0,0,.55) 65%, rgba(0,0,0,.85) 100%);
+      z-index:3;
     }
+    #glass{position:absolute;inset:0;pointer-events:none;z-index:4;
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 40%, rgba(255,255,255,.03) 100%);
+      mix-blend-mode:screen;
+      opacity:.55;
+    }
+
+    /* Simple car interior overlay */
+    #dash{position:absolute;left:0;right:0;bottom:0;height:34vh;min-height:240px;z-index:5;pointer-events:none}
+    #dash .dash-bg{
+      position:absolute;inset:0;
+      background:
+        radial-gradient(circle at 50% -40%, rgba(255,255,255,.12), rgba(255,255,255,0) 55%),
+        linear-gradient(180deg, rgba(10,14,20,0) 0%, rgba(10,14,20,.55) 35%, rgba(6,8,12,.92) 100%);
+    }
+    #dash .steering{
+      position:absolute;left:50%;transform:translateX(-50%);
+      bottom:-14vh;width:34vh;height:34vh;border-radius:50%;
+      border:10px solid rgba(255,255,255,.08);
+      box-shadow:0 0 0 8px rgba(0,0,0,.35) inset, 0 18px 40px rgba(0,0,0,.55);
+      background:radial-gradient(circle at 35% 35%, rgba(255,255,255,.08), rgba(255,255,255,0) 55%);
+      opacity:.8;
+    }
+    #dash .steering:before{
+      content:"";position:absolute;inset:18%;border-radius:50%;
+      border:8px solid rgba(255,255,255,.06);
+    }
+
+    /* HUD top-left */
+    #hud{position:absolute;left:14px;top:14px;z-index:6;pointer-events:none}
+    .pill{
+      display:inline-block;margin:0 8px 8px 0;padding:8px 10px;border-radius:12px;
+      background:rgba(15,20,30,.55);backdrop-filter: blur(10px);
+      border:1px solid rgba(255,255,255,.08);
+      font-size:13px;color:#dbe6ff
+    }
+    .pill b{font-weight:700;color:#fff}
+
+    /* Controls panel bottom-left */
+    #panel{
+      position:absolute;left:14px;bottom:14px;z-index:7;
+      width:min(420px, calc(100% - 28px));
+      background:rgba(15,20,30,.55);backdrop-filter: blur(10px);
+      border:1px solid rgba(255,255,255,.08);border-radius:14px;
+      padding:12px;
+    }
+    #panel, #panel * {pointer-events:auto}
+    #panel h2{margin:0 0 8px;font-size:14px}
+    #row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    input[type="text"]{
+      flex:1;min-width:220px;padding:10px 10px;border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.25);color:#e9eef6;outline:none;
+    }
+    button{
+      padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.08);color:#fff;cursor:pointer;
+    }
+    button:disabled{opacity:.45;cursor:not-allowed}
+    label{font-size:12px;opacity:.9;display:flex;gap:8px;align-items:center}
+    #log{margin-top:10px;max-height:120px;overflow:auto;font-size:12px;line-height:1.3;opacity:.95}
+    #log .entry{padding:6px 0;border-top:1px solid rgba(255,255,255,.08)}
+    #small{font-size:12px;opacity:.85;margin-top:8px}
+    a{color:#8ab4ff}
 
     /* Non-blocking overlay for messages (click to dismiss) */
     #overlay{position:absolute;inset:0;z-index:10;background:rgba(0,0,0,.75);color:#fff;display:flex;
-      align-items:center;justify-content:center;text-align:center;padding:20px;font-size:16px;line-height:1.4;cursor:pointer}
+      align-items:center;justify-content:center;text-align:center;padding:24px}
     #overlay.hidden{display:none}
+
+    /* Weather particles canvas */
+    #fx{position:absolute;inset:0;z-index:8;pointer-events:none}
+
+    /* Mini map top-right */
+    #minimapWrap{
+      position:absolute;right:14px;top:14px;z-index:7;
+      width:min(420px, calc(100% - 28px));height:240px;
+      background:rgba(15,20,30,.55);backdrop-filter: blur(10px);
+      border:1px solid rgba(255,255,255,.08);border-radius:14px;
+      overflow:hidden;
+    }
+    #minimap{width:100%;height:100%}
+    #minimapWrap .label{position:absolute;left:10px;top:10px;z-index:2;
+      font-size:12px;background:rgba(0,0,0,.35);padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.08)}
   </style>
 </head>
 <body>
-<div id="wrap">
+<div id="app">
   <div id="pano"></div>
+  <canvas id="fx"></canvas>
 
-  <div id="windshieldMask" class="vignette"></div>
-  <canvas id="weatherCanvas"></canvas>
+  <div id="vignette"></div>
+  <div id="glass"></div>
 
-  <!-- Simple car interior overlay -->
-  <svg id="interior" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M0,0 L180,0 L300,200 L300,600 L0,600 Z" fill="rgba(0,0,0,0.45)"/>
-    <path d="M1000,0 L820,0 L700,200 L700,600 L1000,600 Z" fill="rgba(0,0,0,0.45)"/>
-    <path d="M0,450 C220,380 780,380 1000,450 L1000,600 L0,600 Z" fill="rgba(0,0,0,0.65)"/>
-    <circle cx="500" cy="520" r="110" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="18"/>
-    <circle cx="500" cy="520" r="72" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="10"/>
-  </svg>
+  <div id="dash">
+    <div class="dash-bg"></div>
+    <div class="steering"></div>
+  </div>
 
   <div id="hud">
-    <div class="row">
-      <div class="pill"><b>Speed</b>: 50&nbsp;mph</div>
-      <div class="pill"><b>Progress</b>: <span id="progressPct">0.0%</span></div>
-      <div class="pill"><b>Miles</b>: <span id="miles">0</span></div>
-    </div>
-    <p id="status">Loading…</p>
-    <p style="margin:6px 0 0;font-size:12px;opacity:.9">Weather: <span id="wx">—</span></p>
+    <div class="pill"><b>Speed</b>: <span id="speedTxt">50</span> mph</div>
+    <div class="pill"><b>Progress</b>: <span id="progTxt">0.0%</span></div>
+    <div class="pill"><b>Miles</b>: <span id="milesTxt">0</span></div>
+    <div class="pill"><b>Weather</b>: <span id="wxTxt">—</span></div>
+  </div>
+
+  <div id="minimapWrap" aria-label="Mini map">
+    <div class="label">Mini map (route)</div>
+    <div id="minimap"></div>
   </div>
 
   <div id="panel">
     <h2>Controls</h2>
-    <div class="controls">
+    <div id="row">
       <!-- Keep the input (handy for quick key swaps), but we auto-fill it from BAKED_API_KEY -->
-      <input id="apiKey" type="password" placeholder="Google Maps API key" autocomplete="off"/>
+      <input id="apiKey" type="text" placeholder="Google Maps API key (Maps JavaScript API enabled)"/>
       <button id="startBtn">Start</button>
-      <button id="pauseBtn">Pause</button>
+      <button id="pauseBtn" disabled>Pause</button>
       <button id="resetBtn">Reset</button>
-      <span class="pill"><label><input id="offlineToggle" type="checkbox" style="vertical-align:middle;margin-right:6px">Continue while away</label></span>
     </div>
-    <div class="controls" style="margin-top:10px">
-      <span class="pill"><b>Now:</b> <span id="nowLoc">San Francisco, CA</span></span>
-      <span class="pill"><b>Next:</b> <span id="nextLoc">Oakland, CA</span></span>
+    <div id="row" style="margin-top:10px">
+      <label><input id="offlineChk" type="checkbox" checked/> Continue while away</label>
+      <label><input id="rememberChk" type="checkbox"/> Remember key (local only)</label>
+    </div>
+    <div id="small">
+      If your key fails, it’s almost always referrer restrictions. Allow:
+      <b>https://YOURNAME.github.io/*</b> (and your repo path) in Google Cloud.
+      Open DevTools → Console for exact Google error.
     </div>
     <div id="log"></div>
   </div>
@@ -112,192 +166,95 @@
 
 <script>
 (() => {
-  // ==============================================================
-  // 1) AIzaSyA7b8w-HdI8p-DgVoZGytFZLz5diJxflxY
-  // ==============================================================
-  // AIzaSyA7b8w-HdI8p-DgVoZGytFZLz5diJxflxY
-  // If you leave it as PASTE_KEY_HERE, the page will not auto-start.
-  const BAKED_API_KEY = "AIzaSyA7b8w-HdI8p-DgVoZGytFZLz5diJxflxY";
-  const AUTO_START_ON_LOAD = true;
+  // =============================
+  // 1) CONFIG
+  // =============================
 
-  // Route: SF → NYC (rough I‑80-ish)
-  const WAYPOINTS = [
-    {name:"San Francisco, CA", lat:37.7749, lng:-122.4194, state:"CA"},
-    {name:"Oakland, CA", lat:37.8044, lng:-122.2711, state:"CA"},
-    {name:"Sacramento, CA", lat:38.5816, lng:-121.4944, state:"CA"},
-    {name:"Reno, NV", lat:39.5296, lng:-119.8138, state:"NV"},
-    {name:"Salt Lake City, UT", lat:40.7608, lng:-111.8910, state:"UT"},
-    {name:"Cheyenne, WY", lat:41.1400, lng:-104.8202, state:"WY"},
-    {name:"Omaha, NE", lat:41.2565, lng:-95.9345, state:"NE"},
-    {name:"Des Moines, IA", lat:41.5868, lng:-93.6250, state:"IA"},
-    {name:"Chicago (near), IL", lat:41.8781, lng:-87.6298, state:"IL"},
-    {name:"Cleveland, OH", lat:41.4993, lng:-81.6944, state:"OH"},
-    {name:"New York, NY", lat:40.7128, lng:-74.0060, state:"NY"}
+  // ✅ Bake your key here for auto-load:
+  const BAKED_API_KEY = "PASTE_KEY_HERE";
+
+  // Start/end
+  const SF = {lat: 37.7749, lng: -122.4194, name: "San Francisco, CA"};
+  const NYC = {lat: 40.7128, lng: -74.0060, name: "New York City, NY"};
+
+  // Simple route points (rough highway-ish polyline)
+  const ROUTE = [
+    {lat:37.7749,lng:-122.4194,name:"San Francisco, CA"},
+    {lat:37.8044,lng:-122.2711,name:"Oakland, CA"},
+    {lat:38.5816,lng:-121.4944,name:"Sacramento, CA"},
+    {lat:39.5296,lng:-119.8138,name:"Reno, NV"},
+    {lat:40.7608,lng:-111.8910,name:"Salt Lake City, UT"},
+    {lat:39.7392,lng:-104.9903,name:"Denver, CO"},
+    {lat:41.2565,lng:-95.9345,name:"Omaha, NE"},
+    {lat:41.8781,lng:-87.6298,name:"Chicago, IL"},
+    {lat:41.4993,lng:-81.6944,name:"Cleveland, OH"},
+    {lat:40.4406,lng:-79.9959,name:"Pittsburgh, PA"},
+    {lat:39.9526,lng:-75.1652,name:"Philadelphia, PA"},
+    {lat:40.7128,lng:-74.0060,name:"New York City, NY"}
   ];
 
-  const SPEED_MPH = 50;
-  const SPEED_MPS = SPEED_MPH * 1609.344 / 3600;
+  // Detour route (optional, not fully used here yet)
+  const DETOUR = [
+    {lat:39.7392,lng:-104.9903,name:"Denver, CO"},
+    {lat:39.7684,lng:-86.1581,name:"Indianapolis, IN"},
+    {lat:38.9072,lng:-77.0369,name:"Washington, DC"},
+    {lat:40.7128,lng:-74.0060,name:"New York City, NY"}
+  ];
 
-  // DOM
-  const $ = (id) => document.getElementById(id);
+  // Simulation
+  const MPH_DEFAULT = 50;
+  const TICK_MS = 1000; // 1 second
+  const OFFLINE_KEY = "roadtrip_offline_state_v1";
+  const KEY_STORE = "roadtrip_api_key_v1";
+
+  // Weather: Open-Meteo (no API key)
+  // We'll fetch current weather from open-meteo for current position.
+  // =============================
+  // 2) STATE
+  // =============================
+  let googleReady = false;
+  let pano = null;
+  let map = null;
+  let routeLine = null;
+  let carMarker = null;
+
+  const state = {
+    apiKey: "",
+    running: false,
+    paused: false,
+    speedMph: MPH_DEFAULT,
+    miles: 0,
+    segIndex: 0,
+    segT: 0, // 0..1 along current segment
+    lastTick: Date.now(),
+    lastSavedAt: Date.now(),
+    lastPos: {...ROUTE[0]},
+    lastWxFetchAt: 0,
+    wx: {label:"—", isRain:false, isSnow:false, wind:0, tempC:null},
+    log: []
+  };
+
+  // =============================
+  // 3) DOM
+  // =============================
+  const $ = (id)=>document.getElementById(id);
   const apiKeyEl = $("apiKey");
   const startBtn = $("startBtn");
   const pauseBtn = $("pauseBtn");
   const resetBtn = $("resetBtn");
-  const offlineToggle = $("offlineToggle");
-  const statusEl = $("status");
-  const progressPctEl = $("progressPct");
-  const milesEl = $("miles");
-  const nowLocEl = $("nowLoc");
-  const nextLocEl = $("nextLoc");
-  const wxEl = $("wx");
-  const logEl = $("log");
-  const overlay = $("overlay");
-
-  // Weather canvas
-  const canvas = $("weatherCanvas");
-  const ctx = canvas.getContext("2d");
-  const particles = [];
-  let wxMode = "none";
-  let wxIntensity = 0;
-
-  function resizeCanvas(){
-    canvas.width = window.innerWidth * devicePixelRatio;
-    canvas.height = window.innerHeight * devicePixelRatio;
-    canvas.style.width = window.innerWidth + "px";
-    canvas.style.height = window.innerHeight + "px";
-    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-  }
-  window.addEventListener("resize", resizeCanvas);
-  resizeCanvas();
-
-  // Persistent state
-  const STORE_KEY = "sv_trip_baked";
-  function loadState(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch{ return null; } }
-  function saveState(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-
-  let state = loadState() || {
-    running:false,
-    offlineContinue:false,
-    wpIndex:0,
-    t:0,
-    meters:0,
-    lastSeenAt:Date.now(),
-    lastMilestoneIndex:0,
-    lastState:WAYPOINTS[0].state,
-    apiKey:"",
-    log:[]
-  };
-
-  // Bake the key into the input & state
-  if (BAKED_API_KEY && BAKED_API_KEY !== "PASTE_KEY_HERE"){
-    apiKeyEl.value = BAKED_API_KEY;
-    state.apiKey = BAKED_API_KEY;
-  } else {
-    // Keep whatever is in localStorage (if any)
-    apiKeyEl.value = state.apiKey || "";
-  }
-  offlineToggle.checked = !!state.offlineContinue;
-
-  function pushLog(text){
-    const ts = new Date().toLocaleString();
-    state.log.unshift({ts, text});
-    state.log = state.log.slice(0, 200);
-    renderLog();
-    saveState();
-  }
-  function renderLog(){
-    logEl.innerHTML = state.log.map((it) => `<div class="item"><b>${it.ts}</b><br>${it.text}</div>`).join("") ||
-      `<div class="item" style="opacity:.8">Logbook empty… (yet)</div>`;
-  }
-  renderLog();
-
-  // Distance math
-  function haversine(a,b){
-    const R=6371000;
-    const toRad=(d)=>d*Math.PI/180;
-    const dLat=toRad(b.lat-a.lat);
-    const dLon=toRad(b.lng-a.lng);
-    const lat1=toRad(a.lat), lat2=toRad(b.lat);
-    const s=Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-    return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
-  }
-  function lerp(a,b,t){ return a+(b-a)*t; }
-  function posOnSeg(seg,t){ return {lat: lerp(seg.a.lat,seg.b.lat,t), lng: lerp(seg.a.lng,seg.b.lng,t)}; }
-  function headingDeg(from,to){
-    const toRad=(d)=>d*Math.PI/180;
-    const toDeg=(r)=>r*180/Math.PI;
-    const φ1=toRad(from.lat), φ2=toRad(to.lat);
-    const λ1=toRad(from.lng), λ2=toRad(to.lng);
-    const y=Math.sin(λ2-λ1)*Math.cos(φ2);
-    const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2-λ1);
-    return (toDeg(Math.atan2(y,x))+360)%360;
-  }
-
-  // Segments
-  const segments=[];
-  let totalMeters=0;
-  for(let i=0;i<WAYPOINTS.length-1;i++){
-    const a=WAYPOINTS[i], b=WAYPOINTS[i+1];
-    const m=haversine(a,b);
-    segments.push({a,b,m});
-    totalMeters += m;
-  }
-  function miles(m){ return Math.round(m/1609.344); }
-  function pct(){ return (state.meters/totalMeters)*100; }
-
-  // Progress simulation
-  function advance(dt){
-    let remaining = SPEED_MPS * dt;
-    while (remaining > 0 && state.wpIndex < segments.length){
-      const seg = segments[state.wpIndex];
-      const segRemaining = seg.m * (1 - state.t);
-      const step = Math.min(segRemaining, remaining);
-      const frac = step / seg.m;
-      state.t += frac;
-      state.meters += step;
-      remaining -= step;
-      if (state.t >= 1){
-        state.wpIndex++;
-        state.t = 0;
-        if (state.wpIndex < segments.length){
-          const entered = segments[state.wpIndex].a;
-          if (entered.state !== state.lastState){
-            pushLog(`Crossed into ${entered.state}.`);
-            state.lastState = entered.state;
-          }
-          pushLog(`Passed ${entered.name}.`);
-        } else {
-          pushLog("Arrived in New York City! 🗽");
-          state.running = false;
-        }
-      }
-    }
-    saveState();
-  }
-
-  // Offline catch-up
-  function handleReturn(){
-    const now = Date.now();
-    if (state.offlineContinue && state.lastSeenAt){
-      const elapsed = (now - state.lastSeenAt) / 1000;
-      if (elapsed > 5 && !state.running){
-        const driven = miles(SPEED_MPS * elapsed);
-        pushLog(`Welcome back — you drove ~${driven} miles while away.`);
-        advance(elapsed);
-      }
-    }
-    state.lastSeenAt = now;
-    saveState();
-  }
-
-  // Google Maps loader + Street View
-  let googleReady = false;
-  let pano = null;
-  let svService = null;
+  const offlineChk = $("offlineChk");
+  const rememberChk = $("rememberChk");
+  const speedTxt = $("speedTxt");
+  const progTxt  = $("progTxt");
+  const milesTxt = $("milesTxt");
+  const wxTxt    = $("wxTxt");
+  const logEl    = $("log");
+  const overlay  = $("overlay");
+  const fx = $("fx");
+  const fxCtx = fx.getContext("2d");
 
   function showOverlay(msg){
-    overlay.textContent = msg;
+    overlay.textContent = msg + " (click to dismiss)";
     overlay.classList.remove("hidden");
   }
   function hideOverlay(){
@@ -305,277 +262,489 @@
   }
   overlay.addEventListener("click", hideOverlay);
 
-  function loadGoogle(key){
+  function log(msg){
+    const ts = new Date().toLocaleString();
+    state.log.unshift({ts,msg});
+    state.log = state.log.slice(0, 40);
+    renderLog();
+  }
+  function renderLog(){
+    logEl.innerHTML = state.log.map(e => `<div class="entry"><b>${e.ts}</b><br>${escapeHtml(e.msg)}</div>`).join("");
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // =============================
+  // 4) PERSISTENCE (offline travel)
+  // =============================
+  function saveState(){
+    const payload = {
+      t: Date.now(),
+      miles: state.miles,
+      segIndex: state.segIndex,
+      segT: state.segT,
+      lastPos: state.lastPos,
+      running: state.running,
+      paused: state.paused,
+      speedMph: state.speedMph,
+      log: state.log
+    };
+    localStorage.setItem(OFFLINE_KEY, JSON.stringify(payload));
+    state.lastSavedAt = Date.now();
+  }
+
+  function loadState(){
+    const raw = localStorage.getItem(OFFLINE_KEY);
+    if(!raw) return false;
+    try{
+      const p = JSON.parse(raw);
+      state.miles = p.miles ?? 0;
+      state.segIndex = p.segIndex ?? 0;
+      state.segT = p.segT ?? 0;
+      state.lastPos = p.lastPos ?? {...ROUTE[0]};
+      state.running = !!p.running;
+      state.paused = !!p.paused;
+      state.speedMph = p.speedMph ?? MPH_DEFAULT;
+      state.log = Array.isArray(p.log)? p.log : [];
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  function maybeApplyOfflineProgress(){
+    if(!offlineChk.checked) return;
+    const raw = localStorage.getItem(OFFLINE_KEY);
+    if(!raw) return;
+    try{
+      const p = JSON.parse(raw);
+      const then = p.t || Date.now();
+      const now  = Date.now();
+      const dtMs = Math.max(0, now - then);
+      // Apply dt if running and not paused
+      if(p.running && !p.paused){
+        const hours = dtMs / 3600000;
+        const milesAdd = (p.speedMph ?? MPH_DEFAULT) * hours;
+        if(milesAdd > 0.01){
+          state.miles = (p.miles ?? 0) + milesAdd;
+          // We won't perfectly recompute segIndex/segT from miles; we'll just advance along route by stepping
+          advanceByMiles(milesAdd, true);
+          log(`Welcome back — you traveled ${milesAdd.toFixed(1)} miles while away.`);
+        }
+      }
+    }catch(e){}
+  }
+
+  // =============================
+  // 5) GEOMETRY / ROUTE ADVANCE
+  // =============================
+  function haversineMiles(a,b){
+    const R = 3958.8;
+    const toRad = d => d*Math.PI/180;
+    const dLat = toRad(b.lat-a.lat);
+    const dLng = toRad(b.lng-a.lng);
+    const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function lerpPos(p,q,t){
+    return {lat: lerp(p.lat,q.lat,t), lng: lerp(p.lng,q.lng,t)};
+  }
+
+  function routeTotalMiles(){
+    let total=0;
+    for(let i=0;i<ROUTE.length-1;i++) total += haversineMiles(ROUTE[i], ROUTE[i+1]);
+    return total;
+  }
+  const TOTAL_MILES = routeTotalMiles();
+
+  function advanceByMiles(miles, silent=false){
+    let remaining = miles;
+    while(remaining > 0.0001 && state.segIndex < ROUTE.length-1){
+      const A = ROUTE[state.segIndex];
+      const B = ROUTE[state.segIndex+1];
+      const segMiles = haversineMiles(A,B);
+      const segRemainingMiles = segMiles * (1 - state.segT);
+      if(remaining >= segRemainingMiles){
+        // finish segment
+        state.segIndex++;
+        state.segT = 0;
+        remaining -= segRemainingMiles;
+        state.lastPos = {...ROUTE[state.segIndex]};
+        if(!silent) log(`Passed ${ROUTE[state.segIndex].name}`);
+      }else{
+        // partial
+        const addT = remaining / segMiles;
+        state.segT += addT;
+        const pos = lerpPos(A,B,state.segT);
+        state.lastPos = pos;
+        remaining = 0;
+      }
+    }
+  }
+
+  function progressPct(){
+    return Math.min(100, (state.miles / TOTAL_MILES) * 100);
+  }
+
+  // =============================
+  // 6) GOOGLE MAPS LOADER
+  // =============================
+  function injectGoogle(apiKey){
     return new Promise((resolve, reject) => {
-      if (googleReady) return resolve();
-      if (!key) return reject(new Error("Missing API key."));
-
-      // Called by Google Maps if auth fails
-      window.gm_authFailure = () => reject(new Error(
-        "Google Maps auth failure. Check: (1) referrer restriction includes your GitHub Pages URL, and (2) Maps JavaScript API is enabled."
-      ));
-
+      if(window.google && window.google.maps){
+        googleReady = true;
+        resolve();
+        return;
+      }
       const s = document.createElement("script");
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
-      s.async = true;
-      s.onerror = () => reject(new Error("Failed to load Maps JS script."));
-      s.onload = () => { googleReady = true; resolve(); };
+      // Use callback to know when loaded
+      const cb = "__gm_cb_" + Math.random().toString(36).slice(2);
+      window[cb] = () => { delete window[cb]; googleReady = true; resolve(); };
+      s.onerror = () => reject(new Error("Failed to load Google Maps JS. Check key + referrer restrictions."));
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${cb}`;
       document.head.appendChild(s);
     });
   }
 
-  async function ensureStreetView(){
-    const key = apiKeyEl.value.trim();
-    state.apiKey = key; saveState();
-    await loadGoogle(key);
+  function initPanoAndMap(){
+    // Street View
+    pano = new google.maps.StreetViewPanorama(document.getElementById("pano"),{
+      position: state.lastPos,
+      pov: {heading: 0, pitch: 0},
+      zoom: 1,
+      addressControl: false,
+      showRoadLabels: false,
+      fullscreenControl: true,
+      linksControl: true,
+      panControl: true,
+      enableCloseButton: false
+    });
 
-    if (!pano){
-      pano = new google.maps.StreetViewPanorama(document.getElementById("pano"), {
-        addressControl:false, linksControl:false, panControl:true,
-        motionTracking:false, motionTrackingControl:false,
-        fullscreenControl:true, zoomControl:true, showRoadLabels:false,
-      });
-      svService = new google.maps.StreetViewService();
+    // Mini map
+    map = new google.maps.Map(document.getElementById("minimap"),{
+      center: SF,
+      zoom: 4,
+      disableDefaultUI: true,
+      gestureHandling: "greedy",
+      styles: [
+        {elementType:"geometry",stylers:[{color:"#0b0f14"}]},
+        {elementType:"labels.text.stroke",stylers:[{color:"#0b0f14"}]},
+        {elementType:"labels.text.fill",stylers:[{color:"#8ab4ff"}]},
+        {featureType:"road",elementType:"geometry",stylers:[{color:"#1d2a3a"}]},
+        {featureType:"water",elementType:"geometry",stylers:[{color:"#071a2b"}]},
+        {featureType:"poi",stylers:[{visibility:"off"}]},
+      ]
+    });
+
+    routeLine = new google.maps.Polyline({
+      path: ROUTE,
+      geodesic: true,
+      strokeColor: "#8ab4ff",
+      strokeOpacity: 0.85,
+      strokeWeight: 4
+    });
+    routeLine.setMap(map);
+
+    carMarker = new google.maps.Marker({
+      position: state.lastPos,
+      map,
+      title: "You",
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: "#ffd166",
+        fillOpacity: 1,
+        strokeColor: "#000",
+        strokeOpacity: 0.25,
+        strokeWeight: 2
+      }
+    });
+
+    // Fit route
+    const bounds = new google.maps.LatLngBounds();
+    ROUTE.forEach(p => bounds.extend(p));
+    map.fitBounds(bounds);
+
+    // Try to keep pano imagery found: if no pano nearby, hop forward slightly until we find one
+    snapToNearestPano();
+  }
+
+  function snapToNearestPano(){
+    const sv = new google.maps.StreetViewService();
+    const pos = state.lastPos;
+    sv.getPanorama({location: pos, radius: 2500}, (data, status) => {
+      if(status === "OK" && data && data.location && data.location.latLng){
+        pano.setPosition(data.location.latLng);
+      }else{
+        // no pano, hop forward a bit
+        if(state.segIndex < ROUTE.length-1){
+          advanceByMiles(5, true);
+          log("Street View gap — skipping forward to find coverage…");
+          updateScene();
+          // retry soon
+          setTimeout(snapToNearestPano, 500);
+        }else{
+          log("No Street View coverage near destination.");
+        }
+      }
+    });
+  }
+
+  // =============================
+  // 7) WEATHER (Open-Meteo)
+  // =============================
+  async function fetchWeather(){
+    const now = Date.now();
+    if(now - state.lastWxFetchAt < 30_000) return; // throttle
+    state.lastWxFetchAt = now;
+
+    const {lat,lng} = state.lastPos;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation,rain,snowfall,weather_code,wind_speed_10m&timezone=auto`;
+    try{
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("Weather fetch failed");
+      const j = await res.json();
+      const c = j.current || {};
+      const tempC = (typeof c.temperature_2m === "number") ? c.temperature_2m : null;
+      const rain = (c.rain || 0) > 0 || (c.precipitation || 0) > 0;
+      const snow = (c.snowfall || 0) > 0;
+      const wind = (typeof c.wind_speed_10m === "number") ? c.wind_speed_10m : 0;
+      const code = c.weather_code;
+      const label = wxLabel(code, rain, snow);
+
+      state.wx = {label, isRain: rain, isSnow: snow, wind, tempC};
+      wxTxt.textContent = `${label}${tempC!=null?` • ${tempC.toFixed(1)}°C`:``}${wind?` • wind ${wind.toFixed(0)}`:''}`;
+    }catch(e){
+      // don't spam
     }
   }
 
-  // Weather via Open-Meteo (no key)
-  async function fetchWeather(lat,lng){
-    const url = new URL("https://api.open-meteo.com/v1/forecast");
-    url.searchParams.set("latitude", lat);
-    url.searchParams.set("longitude", lng);
-    url.searchParams.set("current", "temperature_2m,precipitation,rain,snowfall,weather_code");
-    url.searchParams.set("timezone", "auto");
-    const res = await fetch(url.toString());
-    if(!res.ok) throw new Error("Weather fetch failed");
-    return res.json();
+  function wxLabel(code, rain, snow){
+    // Quick mapping of common WMO codes
+    if(snow) return "Snow";
+    if(rain) return "Rain";
+    if(code==null) return "Clear";
+    if(code === 0) return "Clear";
+    if(code === 1 || code === 2) return "Partly cloudy";
+    if(code === 3) return "Overcast";
+    if(code >= 45 && code <= 48) return "Fog";
+    if(code >= 51 && code <= 67) return "Drizzle/Rain";
+    if(code >= 71 && code <= 77) return "Snow";
+    if(code >= 80 && code <= 82) return "Rain showers";
+    if(code >= 95) return "Thunderstorm";
+    return "Weather";
   }
-  function interpretWeather(current){
-    const t = current?.temperature_2m;
-    const precip = current?.precipitation ?? 0;
-    const rain = current?.rain ?? 0;
-    const snow = current?.snowfall ?? 0;
-    let mode = "none";
-    if (snow > 0) mode = "snow";
-    else if (rain > 0 || precip > 0) mode = "rain";
-    const intensity = Math.max(0, Math.min(1, (precip) / 4));
-    return {t, precip, rain, snow, mode, intensity, code: current?.weather_code};
+
+  // =============================
+  // 8) PARTICLES (rain/snow)
+  // =============================
+  const particles = [];
+  function resizeFx(){
+    fx.width = window.innerWidth;
+    fx.height = window.innerHeight;
   }
+  window.addEventListener("resize", resizeFx);
+  resizeFx();
+
   function spawnParticles(){
-    const count = wxMode === "rain" ? Math.floor(150 + wxIntensity*300) :
-                  wxMode === "snow" ? Math.floor(80 + wxIntensity*200) : 0;
-    while (particles.length < count){
+    if(!(state.wx.isRain || state.wx.isSnow)) return;
+    const count = state.wx.isSnow ? 3 : 10;
+    for(let i=0;i<count;i++){
       particles.push({
-        x: Math.random()*window.innerWidth,
-        y: Math.random()*window.innerHeight,
-        vx: wxMode==="rain" ? -50 : (-10 + Math.random()*20),
-        vy: wxMode==="rain" ? (380 + Math.random()*240) : (60 + Math.random()*80),
-        s: wxMode==="rain" ? (10 + Math.random()*18) : (2 + Math.random()*4),
-        a: 0.35 + Math.random()*0.35
+        x: Math.random()*fx.width,
+        y: -20,
+        vy: state.wx.isSnow ? (30+Math.random()*40) : (500+Math.random()*600),
+        vx: state.wx.isSnow ? (-15+Math.random()*30) : (-40+Math.random()*80),
+        r: state.wx.isSnow ? (1+Math.random()*2.2) : (1+Math.random()*1.3),
+        t: 0
       });
     }
-    while (particles.length > count) particles.pop();
   }
-  function drawWeather(dt){
-    ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
-    if (wxMode === "none" || wxIntensity <= 0.02) return;
 
-    const g = ctx.createLinearGradient(0,0,0,window.innerHeight);
-    g.addColorStop(0, `rgba(255,255,255,${0.02*wxIntensity})`);
-    g.addColorStop(1, `rgba(255,255,255,0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+  function drawParticles(dt){
+    fxCtx.clearRect(0,0,fx.width,fx.height);
+    if(!(state.wx.isRain || state.wx.isSnow)) return;
+    fxCtx.save();
+    fxCtx.globalAlpha = state.wx.isSnow ? 0.85 : 0.55;
+    fxCtx.fillStyle = "#ffffff";
+    fxCtx.strokeStyle = "#cfe7ff";
+    fxCtx.lineWidth = 1;
 
-    ctx.save();
-    if (wxMode === "rain"){
-      ctx.strokeStyle = "rgba(200,230,255,0.7)";
-      ctx.lineWidth = 1;
-      for (const p of particles){
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        if (p.y > window.innerHeight+40 || p.x < -40){
-          p.x = window.innerWidth + Math.random()*120;
-          p.y = -Math.random()*200;
-        }
-        ctx.globalAlpha = p.a * (0.4 + 0.6*wxIntensity);
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x - p.s*0.35, p.y - p.s);
-        ctx.stroke();
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.t += dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      if(state.wx.isSnow){
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        fxCtx.fill();
+      }else{
+        fxCtx.beginPath();
+        fxCtx.moveTo(p.x, p.y);
+        fxCtx.lineTo(p.x - p.vx*0.02, p.y - p.vy*0.02);
+        fxCtx.stroke();
       }
-    } else if (wxMode === "snow"){
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      for (const p of particles){
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        if (p.y > window.innerHeight+10 || p.x < -10 || p.x > window.innerWidth+10){
-          p.x = Math.random()*window.innerWidth;
-          p.y = -Math.random()*120;
-        }
-        ctx.globalAlpha = p.a * (0.4 + 0.6*wxIntensity);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.s, 0, Math.PI*2);
-        ctx.fill();
+
+      if(p.y > fx.height + 50 || p.x < -50 || p.x > fx.width + 50){
+        particles.splice(i,1);
       }
     }
-    ctx.restore();
+    fxCtx.restore();
   }
 
-  // Scene updates
-  let lastSVUpdate = 0;
-  let lastWxUpdate = 0;
-  async function updateScene(nowMs){
-    progressPctEl.textContent = pct().toFixed(1) + "%";
-    milesEl.textContent = miles(state.meters).toString();
+  // =============================
+  // 9) MAIN LOOP
+  // =============================
+  function updateUI(){
+    speedTxt.textContent = state.speedMph.toFixed(0);
+    progTxt.textContent = progressPct().toFixed(1) + "%";
+    milesTxt.textContent = state.miles.toFixed(0);
+  }
 
-    if (state.wpIndex >= segments.length){
-      nowLocEl.textContent = WAYPOINTS[WAYPOINTS.length-1].name;
-      nextLocEl.textContent = "—";
-      statusEl.textContent = "Arrived in NYC!";
+  function updateScene(){
+    updateUI();
+    if(googleReady && pano){
+      pano.setPosition(state.lastPos);
+      if(carMarker) carMarker.setPosition(state.lastPos);
+    }
+  }
+
+  function tick(){
+    const now = Date.now();
+    const dt = (now - state.lastTick) / 1000;
+    state.lastTick = now;
+
+    if(state.running && !state.paused){
+      const milesAdd = (state.speedMph / 3600) * (dt);
+      state.miles += milesAdd;
+      advanceByMiles(milesAdd, false);
+
+      if(state.segIndex >= ROUTE.length-1){
+        state.running = false;
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        log("Arrived in New York City! 🎉");
+      }else{
+        // occasionally resnap pano to avoid gaps
+        if(Math.random() < 0.08 && googleReady) snapToNearestPano();
+      }
+
+      updateScene();
+      fetchWeather();
+      if(now - state.lastSavedAt > 2000) saveState();
+    }
+
+    // particles
+    spawnParticles();
+    drawParticles(dt);
+
+    requestAnimationFrame(tick);
+  }
+
+  // =============================
+  // 10) CONTROLS
+  // =============================
+  async function start(){
+    hideOverlay();
+    const key = apiKeyEl.value.trim();
+    if(!key){
+      showOverlay("Missing API key. Paste your Google Maps API key, or set BAKED_API_KEY in the file.");
       return;
     }
+    state.apiKey = key;
 
-    const seg = segments[state.wpIndex];
-    const p = posOnSeg(seg, Math.max(0, Math.min(1, state.t)));
-    nowLocEl.textContent = seg.a.name;
-    nextLocEl.textContent = seg.b.name;
-
-    if (nowMs - lastSVUpdate > 2500){
-      lastSVUpdate = nowMs;
-      try{
-        await ensureStreetView();
-        const lookAhead = posOnSeg(seg, Math.min(1, state.t + 0.02));
-        const hdg = headingDeg(p, lookAhead);
-        const panoData = await new Promise((resolve, reject) => {
-          svService.getPanorama({ location: p, radius: 80, source: google.maps.StreetViewSource.OUTDOOR }, (data, status) => {
-            if (status === "OK" && data) resolve(data);
-            else reject(new Error("No Street View here (coverage gap)."));
-          });
-        });
-        pano.setPano(panoData.location.pano);
-        pano.setPov({ heading: hdg, pitch: 0 });
-        statusEl.textContent = `Driving… ${miles(state.meters)} / ${miles(totalMeters)} mi`;
-      } catch(e){
-        // If auth fails, STOP skipping and tell the user.
-        if (String(e.message || "").toLowerCase().includes("auth")){
-          state.running = false;
-          saveState();
-          statusEl.textContent = "Stopped (API key problem).";
-          showOverlay("Google Maps denied the request. Fix your key restrictions, then reload.");
-          return;
-        }
-        // Otherwise coverage gap: nudge forward
-        statusEl.textContent = "Street View gap… skipping forward";
-        advance(20);
-      }
+    if(rememberChk.checked){
+      localStorage.setItem(KEY_STORE, key);
     }
 
-    if (nowMs - lastWxUpdate > 30000){
-      lastWxUpdate = nowMs;
-      try{
-        const wx = await fetchWeather(p.lat, p.lng);
-        const iw = interpretWeather(wx.current);
-        const label = `${Math.round(iw.t)}°C • precip ${iw.precip ?? 0}`;
-        wxEl.textContent = (iw.mode==="none") ? `${label} • clear` : `${label} • ${iw.mode}`;
-        const prev = wxMode;
-        wxMode = iw.mode;
-        wxIntensity = iw.intensity;
-        spawnParticles();
-        if (wxMode !== prev && wxMode !== "none"){
-          pushLog(`Weather: ${wxMode} (intensity ${(wxIntensity*100).toFixed(0)}%).`);
-        }
-      } catch {
-        wxEl.textContent = "Weather unavailable";
-      }
-    }
-  }
-
-  let lastFrame = performance.now();
-  async function frame(now){
-    const dt = Math.min(0.25, (now - lastFrame) / 1000);
-    lastFrame = now;
-    if (state.running) advance(dt);
-    drawWeather(dt);
-    await updateScene(now);
-    requestAnimationFrame(frame);
-  }
-
-  // UI events
-  startBtn.addEventListener("click", async () => {
-    state.apiKey = apiKeyEl.value.trim();
+    startBtn.disabled = true;
+    resetBtn.disabled = false;
+    pauseBtn.disabled = false;
     state.running = true;
-    state.offlineContinue = offlineToggle.checked;
-    saveState();
+    state.paused = false;
+    state.lastTick = Date.now();
+    log("Trip started. Drag Street View to look around while you drive.");
+
     try{
-      statusEl.textContent = "Starting…";
-      await ensureStreetView();
-      hideOverlay();
-      pushLog("Started trip.");
-    } catch(e){
+      await injectGoogle(key);
+      initPanoAndMap();
+      updateScene();
+      fetchWeather();
+    }catch(e){
+      console.error(e);
+      showOverlay("Google Maps failed to load. Check: API enabled + referrer restrictions + correct URL. Open DevTools Console.");
+      startBtn.disabled = false;
       state.running = false;
-      saveState();
-      statusEl.textContent = "Error.";
-      showOverlay(`Error: ${e.message}`);
     }
-  });
-  pauseBtn.addEventListener("click", () => {
+  }
+
+  function pause(){
+    state.paused = !state.paused;
+    pauseBtn.textContent = state.paused ? "Resume" : "Pause";
+    log(state.paused ? "Paused." : "Resumed.");
+    saveState();
+  }
+
+  function reset(){
+    // Clear progress but keep API key
+    const keepKey = apiKeyEl.value.trim();
+    localStorage.removeItem(OFFLINE_KEY);
     state.running = false;
-    saveState();
-    pushLog("Paused.");
-    statusEl.textContent = "Paused.";
-  });
-  resetBtn.addEventListener("click", () => {
-    localStorage.removeItem(STORE_KEY);
-    state = {
-      running:false,
-      offlineContinue:offlineToggle.checked,
-      wpIndex:0,
-      t:0,
-      meters:0,
-      lastSeenAt:Date.now(),
-      lastMilestoneIndex:0,
-      lastState:WAYPOINTS[0].state,
-      apiKey: apiKeyEl.value.trim(),
-      log:[]
-    };
-    wxMode="none"; wxIntensity=0; particles.length=0;
+    state.paused = false;
+    state.speedMph = MPH_DEFAULT;
+    state.miles = 0;
+    state.segIndex = 0;
+    state.segT = 0;
+    state.lastPos = {...ROUTE[0]};
+    state.log = [];
+    pauseBtn.textContent = "Pause";
+    updateScene();
     renderLog();
-    saveState();
-    statusEl.textContent = "Reset.";
-    wxEl.textContent = "—";
-    nowLocEl.textContent = WAYPOINTS[0].name;
-    nextLocEl.textContent = WAYPOINTS[1].name;
-    pushLog("Reset trip.");
-  });
-  offlineToggle.addEventListener("change", () => {
-    state.offlineContinue = offlineToggle.checked;
-    saveState();
-    pushLog(state.offlineContinue ? "Offline progress enabled." : "Offline progress disabled.");
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) handleReturn();
-    state.lastSeenAt = Date.now();
-    saveState();
-  });
-  window.addEventListener("beforeunload", () => {
-    state.lastSeenAt = Date.now();
-    saveState();
-  });
+    if(pano) pano.setPosition(state.lastPos);
+    if(carMarker) carMarker.setPosition(state.lastPos);
+    apiKeyEl.value = keepKey;
+    log("Reset trip.");
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+  }
 
-  // Init
-  handleReturn();
-  statusEl.textContent = "Ready.";
-  nowLocEl.textContent = WAYPOINTS[0].name;
-  nextLocEl.textContent = WAYPOINTS[1].name;
-  requestAnimationFrame(frame);
+  startBtn.addEventListener("click", start);
+  pauseBtn.addEventListener("click", pause);
+  resetBtn.addEventListener("click", reset);
 
-  // Auto-start if baked key is set
-  if (AUTO_START_ON_LOAD && apiKeyEl.value.trim() && apiKeyEl.value.trim() !== "PASTE_KEY_HERE"){
-    // Defer one tick so event listeners are attached & UI paints
-    setTimeout(() => startBtn.click(), 0);
+  // =============================
+  // 11) BOOT
+  // =============================
+  // load saved key (optional)
+  const savedKey = localStorage.getItem(KEY_STORE);
+  if(savedKey){
+    apiKeyEl.value = savedKey;
+  }
+
+  // bake in if present
+  if (BAKED_API_KEY && BAKED_API_KEY !== "PASTE_KEY_HERE"){
+    apiKeyEl.value = BAKED_API_KEY;
+    state.apiKey = BAKED_API_KEY;
+  }
+
+  loadState();
+  maybeApplyOfflineProgress();
+  updateScene();
+  renderLog();
+
+  // Auto-start if baked key is present
+  if (BAKED_API_KEY && BAKED_API_KEY !== "PASTE_KEY_HERE"){
+    start();
   } else {
     showOverlay("Paste your Google Maps API key into BAKED_API_KEY (in the file), then reload.");
   }
+
+  requestAnimationFrame(tick);
 })();
 </script>
 </body>
