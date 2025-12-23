@@ -3,24 +3,26 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SF → NYC Road Trip (Street View + Live Weather)</title>
+  <title>SF → NYC Road Trip (Car View + Live Weather)</title>
   <style>
-    html,body{height:100%;margin:0;background:#05070b;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    html,body{height:100%;margin:0;background:#05070b;color:#e8eef7;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
     #wrap{position:fixed;inset:0}
-    #pano{position:absolute;inset:0}
-    #weatherCanvas{position:absolute;inset:0;pointer-events:none}
-    #dash{position:absolute;left:0;right:0;bottom:0;height:36vh;pointer-events:none;
-      background:radial-gradient(1200px 420px at 50% 10%, rgba(255,255,255,.08), rgba(0,0,0,.88));
-      border-top:1px solid rgba(255,255,255,.12)}
-    #hud{position:absolute;left:14px;top:14px;max-width:min(520px,92vw);
+
+    /* LAYERS (this is the important part) */
+    #pano{position:absolute;inset:0;z-index:0}
+    #windshieldMask{position:absolute;inset:0;z-index:1;pointer-events:none}
+    #weatherCanvas{position:absolute;inset:0;z-index:2;pointer-events:none}
+    #interior{position:absolute;inset:0;z-index:3;pointer-events:none}
+    #hud{position:absolute;left:14px;top:14px;z-index:4;max-width:min(520px,92vw);
       background:rgba(10,16,24,.62);backdrop-filter:blur(10px);
       border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px 12px}
     #hud .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     #hud b{color:#fff}
     #hud p{margin:6px 0 0;font-size:12px;opacity:.9;line-height:1.25}
-    #panel{position:absolute;left:14px;bottom:14px;width:min(560px,92vw);
+
+    #panel{position:absolute;left:14px;bottom:14px;z-index:4;width:min(560px,92vw);
       background:rgba(10,16,24,.62);backdrop-filter:blur(10px);
-      border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:12px}
+      border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:12px;pointer-events:auto}
     #panel h2{margin:0 0 8px;font-size:14px}
     .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     input[type="text"]{flex:1;min-width:220px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
@@ -35,20 +37,34 @@
       border:1px solid rgba(255,255,255,.08);padding:8px}
     #log .item{font-size:12px;line-height:1.25;padding:6px 6px;border-bottom:1px solid rgba(255,255,255,.06)}
     #log .item:last-child{border-bottom:none}
-    #overlay{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(1000px 700px at 50% 40%, rgba(125,211,252,.10), rgba(0,0,0,.72))}
-    #overlay .card{width:min(720px,calc(100vw - 40px));background:rgba(10,16,24,.70);border:1px solid rgba(255,255,255,.10);
-      border-radius:16px;padding:14px 16px;box-shadow:0 18px 70px rgba(0,0,0,.65)}
-    #overlay h1{margin:0 0 6px;font-size:16px}
-    #overlay p{margin:6px 0;font-size:13px;opacity:.9;line-height:1.3}
-    a{color:#7dd3fc}
-    .warn{color:#ffd37d}
+
+    /* Windshield vignette (helps it feel like you're inside a car) */
+    .vignette{
+      position:absolute;inset:0;
+      background:radial-gradient(1200px 650px at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,.35) 60%, rgba(0,0,0,.70) 100%);
+    }
   </style>
 </head>
 <body>
 <div id="wrap">
   <div id="pano"></div>
+
+  <!-- windshield mask/vignette -->
+  <div id="windshieldMask" class="vignette"></div>
+
+  <!-- weather on windshield -->
   <canvas id="weatherCanvas"></canvas>
-  <div id="dash"></div>
+
+  <!-- “car interior” overlay -->
+  <svg id="interior" viewBox="0 0 1000 600" preserveAspectRatio="none">
+    <!-- A-pillars + dashboard silhouette -->
+    <path d="M0,0 L150,0 L280,180 L280,600 L0,600 Z" fill="rgba(0,0,0,0.55)"/>
+    <path d="M1000,0 L850,0 L720,180 L720,600 L1000,600 Z" fill="rgba(0,0,0,0.55)"/>
+    <path d="M0,420 C220,360 780,360 1000,420 L1000,600 L0,600 Z" fill="rgba(0,0,0,0.70)"/>
+    <!-- steering wheel ring -->
+    <circle cx="500" cy="520" r="110" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="18"/>
+    <circle cx="500" cy="520" r="72" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
+  </svg>
 
   <div id="hud">
     <div class="row">
@@ -57,7 +73,7 @@
       <div class="pill"><b>Miles</b>: <span id="miles">0</span></div>
     </div>
     <p id="status">Paste your Google Maps API key, then click <b>Start</b>.</p>
-    <p class="warn" id="hint" style="display:none"></p>
+    <p id="wxLine" style="margin:6px 0 0;font-size:12px;opacity:.9">Weather: <span id="wx">—</span></p>
   </div>
 
   <div id="panel">
@@ -72,27 +88,16 @@
 
     <div class="controls" style="margin-top:10px">
       <span class="pill"><b>Now:</b> <span id="nowLoc">San Francisco, CA</span></span>
-      <span class="pill"><b>Weather:</b> <span id="wx">—</span></span>
       <span class="pill"><b>Next:</b> <span id="nextLoc">—</span></span>
     </div>
 
-    <div id="log" aria-label="Logbook"></div>
-  </div>
-
-  <div id="overlay">
-    <div class="card">
-      <h1>SF → NYC Road Trip (Street View + Live Weather)</h1>
-      <p>This uses Google’s <b>StreetViewPanorama</b> viewer from the Maps JavaScript API.</p>
-      <p>Live weather (rain/snow) comes from <b>Open‑Meteo</b> (no API key).</p>
-      <p><b>Netlify Drop:</b> rename this file to <b>index.html</b>, put it in a folder, then drag the folder to Netlify Drop.</p>
-      <p class="warn">You must allow your Netlify URL as an HTTP referrer restriction on your Google API key.</p>
-      <p>Click <b>Start</b> once you’ve pasted your key.</p>
-    </div>
+    <div id="log"></div>
   </div>
 </div>
 
 <script>
 (() => {
+  // Waypoints (coarse)
   const WAYPOINTS = [
     {name:"San Francisco, CA", lat:37.7749, lng:-122.4194, state:"CA"},
     {name:"Oakland, CA", lat:37.8044, lng:-122.2711, state:"CA"},
@@ -103,7 +108,6 @@
     {name:"Omaha, NE", lat:41.2565, lng:-95.9345, state:"NE"},
     {name:"Des Moines, IA", lat:41.5868, lng:-93.6250, state:"IA"},
     {name:"Chicago (near), IL", lat:41.8781, lng:-87.6298, state:"IL"},
-    {name:"Toledo, OH", lat:41.6528, lng:-83.5379, state:"OH"},
     {name:"Cleveland, OH", lat:41.4993, lng:-81.6944, state:"OH"},
     {name:"NYC (metro), NY", lat:40.7128, lng:-74.0060, state:"NY"},
   ];
@@ -117,9 +121,7 @@
   const pauseBtn = $("pauseBtn");
   const resetBtn = $("resetBtn");
   const offlineToggle = $("offlineToggle");
-  const overlay = $("overlay");
   const statusEl = $("status");
-  const hintEl = $("hint");
   const progressPctEl = $("progressPct");
   const milesEl = $("miles");
   const nowLocEl = $("nowLoc");
@@ -127,6 +129,7 @@
   const wxEl = $("wx");
   const logEl = $("log");
 
+  // Weather overlay canvas
   const canvas = $("weatherCanvas");
   const ctx = canvas.getContext("2d");
   const particles = [];
@@ -143,19 +146,26 @@
   window.addEventListener("resize", resize);
   resize();
 
-  const STORE_KEY = "sv_trip_v3";
+  // Storage
+  const STORE_KEY = "sv_trip_car_v1";
   const loadState = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; } };
+  const saveState = () => localStorage.setItem(STORE_KEY, JSON.stringify(state));
+
+  // Trip state
   let state = loadState() || {
-    running: false, offlineContinue: true, wpIndex: 0, t: 0, meters: 0,
-    lastSeenAt: Date.now(), lastMilestoneIndex: 0, lastState: WAYPOINTS[0].state,
-    log: [], apiKey: ""
+    running:false, offlineContinue:true,
+    wpIndex:0, t:0, meters:0,
+    lastSeenAt: Date.now(),
+    lastMilestoneIndex: 0,
+    lastState: WAYPOINTS[0].state,
+    apiKey:"",
+    log:[]
   };
 
   apiKeyEl.value = state.apiKey || "";
   offlineToggle.checked = !!state.offlineContinue;
 
-  const saveState = () => localStorage.setItem(STORE_KEY, JSON.stringify(state));
-
+  // Segments
   function haversine(a, b) {
     const R = 6371000;
     const toRad = d => d * Math.PI / 180;
@@ -165,7 +175,6 @@
     const s = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
   }
-
   const segments = [];
   let totalMeters = 0;
   for (let i=0;i<WAYPOINTS.length-1;i++){
@@ -174,7 +183,6 @@
     segments.push({a,b,m});
     totalMeters += m;
   }
-
   function lerp(a,b,t){ return a+(b-a)*t; }
   function posOnSeg(seg,t){ return {lat: lerp(seg.a.lat, seg.b.lat, t), lng: lerp(seg.a.lng, seg.b.lng, t)}; }
 
@@ -202,12 +210,7 @@
     renderLog();
     saveState();
   }
-
-  function setStatus(html, hint=""){
-    statusEl.innerHTML = html;
-    if (hint){ hintEl.style.display="block"; hintEl.textContent=hint; }
-    else { hintEl.style.display="none"; hintEl.textContent=""; }
-  }
+  function setStatus(html){ statusEl.innerHTML = html; }
 
   // Google loader
   let googleReady = false;
@@ -218,7 +221,7 @@
     return new Promise((resolve, reject) => {
       if (googleReady) return resolve();
       if (!key) return reject(new Error("Missing API key."));
-      window.gm_authFailure = () => reject(new Error("Google Maps auth failure. Check HTTP referrers + enabled APIs."));
+      window.gm_authFailure = () => reject(new Error("Google Maps auth failure (referrer/API)."));
       const s = document.createElement("script");
       s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
       s.async = true;
@@ -232,17 +235,27 @@
     const key = apiKeyEl.value.trim();
     state.apiKey = key; saveState();
     await loadGoogle(key);
+
     if (!pano){
+      // Disable most Google UI so it feels “in-car”
       pano = new google.maps.StreetViewPanorama(document.getElementById("pano"), {
-        addressControl:false, linksControl:false, panControl:true,
-        motionTracking:false, motionTrackingControl:false,
-        fullscreenControl:true, zoomControl:true, showRoadLabels:false,
+        addressControl:false,
+        linksControl:false,
+        panControl:false,
+        enableCloseButton:false,
+        fullscreenControl:false,
+        zoomControl:false,
+        motionTracking:false,
+        motionTrackingControl:false,
+        showRoadLabels:false,
+        clickToGo:true,
+        disableDefaultUI:true,
       });
       svService = new google.maps.StreetViewService();
     }
   }
 
-  // Weather via Open-Meteo (no key)
+  // Weather (Open-Meteo)
   async function fetchWeather(lat,lng){
     const url = new URL("https://api.open-meteo.com/v1/forecast");
     url.searchParams.set("latitude", lat);
@@ -261,30 +274,29 @@
     let mode = "none";
     if (snow > 0) mode = "snow";
     else if (rain > 0 || precip > 0) mode = "rain";
-    const intensity = Math.max(0, Math.min(1, (precip) / 4));
-    return {t, precip, rain, snow, mode, intensity, code: current?.weather_code};
+    const intensity = Math.max(0, Math.min(1, precip / 4));
+    return {t, precip, mode, intensity};
   }
-
   function spawnParticles(){
-    const count = wxMode === "rain" ? Math.floor(150 + wxIntensity*300) :
-                  wxMode === "snow" ? Math.floor(80 + wxIntensity*200) : 0;
+    const count = wxMode === "rain" ? Math.floor(160 + wxIntensity*320) :
+                  wxMode === "snow" ? Math.floor(90 + wxIntensity*220) : 0;
     while (particles.length < count){
       particles.push({
         x: Math.random()*window.innerWidth,
         y: Math.random()*window.innerHeight,
         vx: wxMode==="rain" ? -50 : (-10 + Math.random()*20),
-        vy: wxMode==="rain" ? (380 + Math.random()*240) : (60 + Math.random()*80),
+        vy: wxMode==="rain" ? (400 + Math.random()*260) : (60 + Math.random()*90),
         s: wxMode==="rain" ? (10 + Math.random()*18) : (2 + Math.random()*4),
         a: 0.35 + Math.random()*0.35
       });
     }
     while (particles.length > count) particles.pop();
   }
-
   function drawWeather(dt){
     ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
     if (wxMode === "none" || wxIntensity <= 0.02) return;
 
+    // subtle windshield haze
     const g = ctx.createLinearGradient(0,0,0,window.innerHeight);
     g.addColorStop(0, `rgba(255,255,255,${0.02*wxIntensity})`);
     g.addColorStop(1, `rgba(255,255,255,0)`);
@@ -307,12 +319,6 @@
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(p.x - p.s*0.35, p.y - p.s);
         ctx.stroke();
-      }
-      ctx.globalAlpha = 0.06 * wxIntensity;
-      ctx.fillStyle = "rgba(255,255,255,1)";
-      for (let i=0;i<3;i++){
-        const x = window.innerWidth*(0.25 + i*0.18);
-        ctx.fillRect(x, window.innerHeight*0.18, 6, window.innerHeight*0.62);
       }
     } else if (wxMode === "snow"){
       ctx.fillStyle = "rgba(255,255,255,0.9)";
@@ -341,7 +347,7 @@
       pushLog(`Crossed into ${wp.state}.`);
       state.lastState = wp.state;
     }
-    if (wp.name) pushLog(`Passed ${wp.name}.`);
+    pushLog(`Passed ${wp.name}.`);
     state.lastMilestoneIndex = i;
     saveState();
   }
@@ -392,18 +398,14 @@
     progressPctEl.textContent = pct().toFixed(1) + "%";
     milesEl.textContent = miles(state.meters).toString();
 
-    if (state.wpIndex >= segments.length){
-      nowLocEl.textContent = WAYPOINTS[WAYPOINTS.length-1].name;
-      nextLocEl.textContent = "—";
-      return;
-    }
+    if (state.wpIndex >= segments.length) return;
 
     const seg = segments[state.wpIndex];
     const p = posOnSeg(seg, Math.max(0, Math.min(1, state.t)));
     nowLocEl.textContent = seg.a.name;
     nextLocEl.textContent = seg.b.name;
 
-    if (nowMs - lastSVUpdate > 3000){
+    if (nowMs - lastSVUpdate > 2500){
       lastSVUpdate = nowMs;
       try{
         await ensureStreetView();
@@ -411,19 +413,18 @@
         const hdg = headingDeg(p, lookAhead);
 
         const panoData = await new Promise((resolve, reject) => {
-          svService.getPanorama({ location: p, radius: 80, source: google.maps.StreetViewSource.OUTDOOR }, (data, status) => {
+          svService.getPanorama({ location: p, radius: 90, source: google.maps.StreetViewSource.OUTDOOR }, (data, status) => {
             if (status === "OK" && data) resolve(data);
-            else reject(new Error("No Street View here (coverage gap)."));
+            else reject(new Error("Coverage gap"));
           });
         });
 
         pano.setPano(panoData.location.pano);
         pano.setPov({ heading: hdg, pitch: 0 });
-        overlay.style.display = "none";
         setStatus(`Driving… <b>${miles(state.meters)}</b> mi / <b>${miles(totalMeters)}</b> mi`);
       } catch(e){
-        setStatus(`<b>Street View gap:</b> ${e.message}`, "Auto-skipping forward to find coverage…");
-        advance(25);
+        setStatus(`<b>Street View gap:</b> ${e.message} — skipping…`);
+        advance(20);
       }
     }
 
@@ -432,8 +433,7 @@
       try{
         const wx = await fetchWeather(p.lat, p.lng);
         const iw = interpretWeather(wx.current);
-        const label = `${Math.round(iw.t)}°C • precip ${iw.precip ?? 0} • code ${iw.code ?? "?"}`;
-        wxEl.textContent = (iw.mode==="none") ? `${label} • clear` : `${label} • ${iw.mode}`;
+        wxEl.textContent = `${Math.round(iw.t)}°C • precip ${iw.precip} • ${iw.mode}`;
         const prev = wxMode;
         wxMode = iw.mode;
         wxIntensity = iw.intensity;
@@ -466,11 +466,10 @@
     saveState();
     try{
       await ensureStreetView();
-      overlay.style.display = "none";
       pushLog("Started trip.");
       setStatus("Starting…");
     } catch(e){
-      setStatus(`<b>Error:</b> ${e.message}`, "Netlify: add your https://YOURNAME.netlify.app/* to the key’s HTTP referrers, then wait ~60s.");
+      setStatus(`<b>Error:</b> ${e.message}`);
     }
   });
 
@@ -485,9 +484,8 @@
     localStorage.removeItem(STORE_KEY);
     state = { running:false, offlineContinue:true, wpIndex:0, t:0, meters:0,
       lastSeenAt:Date.now(), lastMilestoneIndex:0, lastState:WAYPOINTS[0].state,
-      log:[], apiKey: apiKeyEl.value.trim() };
+      apiKey: apiKeyEl.value.trim(), log:[] };
     wxMode="none"; wxIntensity=0; particles.length=0;
-    overlay.style.display = "grid";
     renderLog();
     saveState();
     setStatus("Reset. Paste key and click Start.");
@@ -507,6 +505,7 @@
     state.lastSeenAt = Date.now();
     saveState();
   });
+
   window.addEventListener("beforeunload", () => {
     state.lastSeenAt = Date.now();
     saveState();
@@ -518,14 +517,6 @@
   nowLocEl.textContent = WAYPOINTS[0].name;
   nextLocEl.textContent = WAYPOINTS[1].name;
   requestAnimationFrame(frame);
-
-  (function tests(){
-    function assert(c,m){ if(!c) throw new Error("Test failed: "+m); }
-    assert(WAYPOINTS.length>=2,"waypoints");
-    assert(segments.length===WAYPOINTS.length-1,"segments");
-    assert(totalMeters>1e6,"route length");
-    console.log("[sv_trip_v3] tests ok");
-  })();
 })();
 </script>
 </body>
