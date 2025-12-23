@@ -3,275 +3,420 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>SF → NYC Road Trip (Street View + Car Interior + Weather)</title>
+<title>SF → NYC Road Trip (Street View + World Map + Weather)</title>
 <style>
   :root{
-    --bg: #05070b;
-    --panel: rgba(10,16,24,.62);
-    --panel2: rgba(10,16,24,.78);
-    --border: rgba(255,255,255,.12);
-    --text: #e8eef7;
-    --muted: rgba(232,238,247,.85);
-    --warn: #ffd37d;
-    --bad: #ff8a8a;
+    --bg:#05070b;
+    --panel:rgba(12,16,24,.62);
+    --panel2:rgba(12,16,24,.78);
+    --border:rgba(255,255,255,.12);
+    --text:#e8eef7;
+    --muted:rgba(232,238,247,.86);
+    --warn:#ffd37d;
+    --bad:#ff8a8a;
+    --ok:#9ae6b4;
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
     font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
   #wrap{position:fixed;inset:0}
 
-  /* Layering */
-  #pano{position:absolute;inset:0;z-index:0}
-  #windshieldVignette{position:absolute;inset:0;z-index:1;pointer-events:none}
+  /* pano + layers */
+  #panoWrap{position:absolute;inset:0;z-index:0}
+  .panoLayer{position:absolute;inset:0;opacity:1;transition:opacity .35s ease;will-change:opacity}
+  #panoB{opacity:0}
+
   #weatherCanvas{position:absolute;inset:0;z-index:2;pointer-events:none}
   #interior{position:absolute;inset:0;z-index:3;pointer-events:none}
-  #miniWrap{position:absolute;right:12px;top:12px;z-index:4;pointer-events:auto}
-  #hud{position:absolute;left:12px;top:12px;z-index:5;max-width:min(640px,92vw);
-    background:var(--panel);backdrop-filter:blur(10px);
-    border:1px solid var(--border);border-radius:14px;padding:10px 12px}
-  #panel{position:absolute;left:12px;bottom:12px;z-index:6;width:min(720px,94vw);
-    background:var(--panel2);backdrop-filter:blur(10px);
-    border:1px solid var(--border);border-radius:14px;padding:12px;pointer-events:auto}
+  #toyLayer{position:absolute;inset:0;z-index:4;pointer-events:auto}
 
-  /* Windshield framing (soft edges so side windows are visible) */
-  #windshieldVignette{
-    background:
-      radial-gradient(1200px 650px at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,.22) 60%, rgba(0,0,0,.55) 100%),
-      linear-gradient(to bottom, rgba(0,0,0,.10), rgba(0,0,0,.00) 40%, rgba(0,0,0,.30) 100%);
-    mix-blend-mode: multiply;
+  /* Always-visible tiny UI bar */
+  #uiBar{
+    position:absolute;left:10px;top:10px;z-index:30;
+    display:flex;gap:6px;align-items:center;
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:999px;
+    padding:6px 8px;
+    backdrop-filter: blur(8px);
+  }
+  #uiBar button{
+    font-size:12px;line-height:1;
+    padding:6px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);color:var(--text);cursor:pointer
+  }
+  #uiBar button:hover{background:rgba(255,255,255,.10)}
+  #uiBar .pill{
+    font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.12);color:var(--muted)
   }
 
-  /* HUD */
-  #hud .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .pill{font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.07);
+  /* HUD (smaller) */
+  #hud{
+    position:absolute;left:10px;top:52px;z-index:20;
+    max-width:min(540px,92vw);
+    background:var(--panel);backdrop-filter: blur(10px);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:8px 10px;
+    font-size:12px;
+  }
+  #hud.collapsed .hudBody{display:none}
+  #hud .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pill{font-size:12px;padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.06);
     border:1px solid rgba(255,255,255,.12)}
-  #status{margin:8px 0 0;font-size:12px;line-height:1.25;color:var(--muted)}
+  #status{margin:6px 0 0;font-size:12px;line-height:1.25;color:var(--muted)}
   #status b{color:#fff}
   .warn{color:var(--warn)}
   .bad{color:var(--bad)}
+  .ok{color:var(--ok)}
 
-  /* Panel */
-  #panel h2{margin:0 0 10px;font-size:14px}
-  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  input[type="text"]{flex:1;min-width:240px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
-    background:rgba(255,255,255,.06);color:var(--text);outline:none}
-  button, select{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
-    background:rgba(125,211,252,.12);color:var(--text);cursor:pointer}
-  button:hover{background:rgba(125,211,252,.20)}
+  /* Panel (smaller + minimizable) */
+  #panel{
+    position:absolute;left:10px;bottom:10px;z-index:22;
+    width:min(760px,95vw);
+    background:var(--panel2);backdrop-filter: blur(10px);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    pointer-events:auto;
+    font-size:12px;
+  }
+  #panel.collapsed .panelBody{display:none}
+  #panel h2{margin:0 0 8px;font-size:13px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input[type="text"]{
+    flex:1;min-width:210px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);color:var(--text);outline:none
+  }
+  button,select{
+    padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(125,211,252,.10);color:var(--text);cursor:pointer
+  }
+  button:hover{background:rgba(125,211,252,.18)}
   select{background:rgba(255,255,255,.06)}
   label{font-size:12px;opacity:.95}
-  .subrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:10px}
-  .subrow .pill{background:rgba(255,255,255,.05)}
-  .slider{display:flex;gap:10px;align-items:center}
-  input[type="range"]{width:220px}
-  small{opacity:.85}
+  .subrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  input[type="range"]{width:200px}
 
-  #log{margin-top:10px;max-height:180px;overflow:auto;border-radius:12px;background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.08);padding:8px}
-  #log .item{font-size:12px;line-height:1.25;padding:6px 6px;border-bottom:1px solid rgba(255,255,255,.06)}
+  #log{
+    margin-top:8px;max-height:160px;overflow:auto;border-radius:12px;background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);padding:8px
+  }
+  #log .item{font-size:12px;line-height:1.25;padding:6px;border-bottom:1px solid rgba(255,255,255,.06)}
   #log .item:last-child{border-bottom:none}
 
-  /* Mini map */
-  #miniMap{
-    width:290px;height:200px;border-radius:14px;
-    background:rgba(0,0,0,.35);
-    border:1px solid rgba(255,255,255,.14);
-    box-shadow:0 10px 30px rgba(0,0,0,.35);
-  }
-  #miniLegend{
-    margin-top:8px;
-    width:290px;
+  /* Map panel (bigger, Google-maps-ish) */
+  #mapPanel{
+    position:absolute;right:10px;top:10px;z-index:21;
+    width:520px;height:360px;
     background:rgba(0,0,0,.35);
     border:1px solid rgba(255,255,255,.14);
     border-radius:14px;
-    padding:8px 10px;
+    overflow:hidden;
+    backdrop-filter: blur(8px);
+  }
+  #mapPanel.hidden{display:none}
+  #mapPanel.fullscreen{
+    left:10px;right:10px;top:10px;bottom:10px;
+    width:auto;height:auto;
+    z-index:40;
+  }
+  #mapHeader{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);
+    background:rgba(0,0,0,.38);
     font-size:12px;
-    color:var(--muted);
   }
-  #legendBar{
-    height:8px;border-radius:99px;
-    background:linear-gradient(90deg, #3b82f6, #22c55e, #f97316, #ef4444);
-    margin:6px 0;
+  #mapHeader .left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #mapHeader .right{display:flex;gap:6px;align-items:center}
+  #mapHeader button, #mapHeader select{
+    padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.07);color:var(--text);cursor:pointer;font-size:12px
   }
-  #miniTip{
-    position:absolute;right:0;top:0;transform:translate(-12px, 220px);
-    width:290px;
+  #mapHeader button:hover{background:rgba(255,255,255,.12)}
+  #mapMain{
+    position:absolute;left:0;right:0;top:41px;bottom:0;
+    display:grid;
+    grid-template-columns: 1.2fr .8fr;
+    gap:0;
+  }
+  #mapPanel:not(.fullscreen) #mapMain{grid-template-columns: 1fr 0fr;}
+  #mapPanel:not(.fullscreen) #routeListWrap{display:none}
+
+  #mapViewport{position:relative;min-width:0;min-height:0}
+  #mapImg{
+    position:absolute;inset:0;width:100%;height:100%;
+    object-fit:cover;opacity:.95;
+    filter:saturate(1.05) contrast(1.02);
+    display:none; /* enabled when Google Static Maps works */
+  }
+  #mapOverlay{
+    position:absolute;inset:0;width:100%;height:100%;
+  }
+  #routeListWrap{
+    border-left:1px solid rgba(255,255,255,.10);
+    background:rgba(0,0,0,.22);
+    padding:8px;
+    overflow:auto;
+  }
+  #routeListWrap h3{margin:0 0 8px;font-size:12px;opacity:.95}
+  .stop{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
+    padding:7px;border-radius:10px;border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.03);margin-bottom:8px
+  }
+  .stop.active{border-color:rgba(125,211,252,.35);background:rgba(125,211,252,.06)}
+  .stop b{color:#fff}
+  .stop small{opacity:.85}
+  .stop .wx{opacity:.95;white-space:nowrap}
+
+  #mapTip{
+    position:absolute;left:10px;bottom:10px;
     background:rgba(0,0,0,.55);
     border:1px solid rgba(255,255,255,.14);
-    border-radius:14px;
+    border-radius:12px;
     padding:8px 10px;
-    font-size:12px;
     color:var(--muted);
+    font-size:12px;
     display:none;
     pointer-events:none;
   }
-  #miniTip b{color:#fff}
-  .kbd{padding:2px 6px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(255,255,255,.05);font-size:12px}
+  #mapTip b{color:#fff}
 
-  /* Modal (hazards) */
-  #modalBack{
-    position:absolute;inset:0;z-index:10;
+  /* Car interior frame (small, not blocking view) */
+  #interior svg{display:block}
+  #interior{
+    pointer-events:none;
+    opacity:.92;
+  }
+
+  /* Simple toys */
+  .toy{
+    position:absolute;
+    width:44px;height:44px;
+    transform-origin: 50% 0%;
+    cursor:grab;
+    user-select:none;
+  }
+  .toy:active{cursor:grabbing}
+  .dice{
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.20);
+    border-radius:10px;
+    box-shadow:0 8px 25px rgba(0,0,0,.35);
+  }
+  .dice:before{
+    content:"";
+    position:absolute;inset:8px;
+    background:
+      radial-gradient(circle at 25% 30%, rgba(255,255,255,.85) 0 2px, transparent 3px),
+      radial-gradient(circle at 70% 30%, rgba(255,255,255,.85) 0 2px, transparent 3px),
+      radial-gradient(circle at 25% 70%, rgba(255,255,255,.85) 0 2px, transparent 3px),
+      radial-gradient(circle at 70% 70%, rgba(255,255,255,.85) 0 2px, transparent 3px),
+      radial-gradient(circle at 48% 50%, rgba(255,255,255,.85) 0 2px, transparent 3px);
+  }
+  .freshener{
+    width:34px;height:50px;border-radius:14px 14px 18px 18px;
+    background:rgba(125,211,252,.14);
+    border:1px solid rgba(125,211,252,.28);
+  }
+  .freshener:before{
+    content:"";
+    position:absolute;left:50%;top:6px;transform:translateX(-50%);
+    width:16px;height:16px;border-radius:50%;
+    border:1px solid rgba(255,255,255,.25);
+    background:rgba(255,255,255,.06);
+  }
+
+  /* Hide UI mode */
+  .uiHidden #hud,
+  .uiHidden #panel,
+  .uiHidden #mapPanel{display:none !important}
+  #showUiBtn{
+    position:absolute;left:10px;bottom:10px;z-index:50;
     display:none;
-    background:rgba(0,0,0,.55);
-    backdrop-filter:blur(6px);
-    pointer-events:auto;
+    padding:10px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.35);backdrop-filter:blur(8px);
+    color:var(--text);cursor:pointer
   }
-  #modal{
-    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:min(720px,92vw);
-    background:rgba(10,16,24,.88);
-    border:1px solid rgba(255,255,255,.14);
-    border-radius:16px;
-    padding:14px 16px;
-    box-shadow:0 18px 70px rgba(0,0,0,.65);
-  }
-  #modal h3{margin:0 0 6px;font-size:16px}
-  #modal p{margin:6px 0;font-size:13px;opacity:.92;line-height:1.35}
-  #modal .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-  #modal .actions button{background:rgba(255,255,255,.07)}
-  #modal .actions button.primary{background:rgba(125,211,252,.22)}
-  #modal .actions button.danger{background:rgba(239,68,68,.22)}
-  #modal .actions button:hover{background:rgba(255,255,255,.12)}
-  #toastWrap{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:9;pointer-events:none}
+  .uiHidden #showUiBtn{display:block}
+
+  /* Toasts */
+  #toastWrap{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:60;pointer-events:none}
   .toast{
-    margin-top:8px;
-    background:rgba(10,16,24,.78);
-    border:1px solid rgba(255,255,255,.12);
-    border-radius:14px;
-    padding:10px 12px;
-    font-size:12px;
-    color:var(--muted);
-    box-shadow:0 12px 40px rgba(0,0,0,.45);
-    max-width:min(700px,92vw);
-    animation: toastIn .18s ease-out;
+    margin-top:8px;background:rgba(10,16,24,.78);border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;padding:10px 12px;font-size:12px;color:var(--muted);
+    box-shadow:0 12px 40px rgba(0,0,0,.45);max-width:min(700px,92vw);animation:toastIn .18s ease-out
   }
   .toast b{color:#fff}
   @keyframes toastIn{from{transform:translateY(-6px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  /* Hazard modal */
+  #modalBack{position:absolute;inset:0;z-index:80;display:none;background:rgba(0,0,0,.55);
+    backdrop-filter:blur(6px);pointer-events:auto}
+  #modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(760px,92vw);background:rgba(10,16,24,.90);
+    border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px;
+    box-shadow:0 18px 70px rgba(0,0,0,.65)}
+  #modal h3{margin:0 0 6px;font-size:15px}
+  #modal p{margin:6px 0;font-size:13px;opacity:.92;line-height:1.35}
+  #modal .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  #modal .actions button{background:rgba(255,255,255,.08)}
+  #modal .actions button.primary{background:rgba(125,211,252,.22)}
+  #modal .actions button.danger{background:rgba(239,68,68,.22)}
 </style>
 </head>
 <body>
 <div id="wrap">
-  <div id="pano"></div>
-
-  <div id="windshieldVignette"></div>
-  <canvas id="weatherCanvas"></canvas>
-
-  <!-- Car interior overlay (simple SVG; transparent areas = windows) -->
-  <svg id="interior" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
-    <!-- Roof frame -->
-    <path d="M0,0 L1000,0 L1000,120 C760,80 240,80 0,120 Z" fill="rgba(0,0,0,0.35)"/>
-    <!-- A pillars (semi transparent so you still see side windows) -->
-    <path d="M0,0 L150,0 L280,200 L280,600 L0,600 Z" fill="rgba(0,0,0,0.50)"/>
-    <path d="M1000,0 L850,0 L720,200 L720,600 L1000,600 Z" fill="rgba(0,0,0,0.50)"/>
-    <!-- Dash -->
-    <path d="M0,420 C220,355 780,355 1000,420 L1000,600 L0,600 Z" fill="rgba(0,0,0,0.78)"/>
-    <!-- Steering wheel hint -->
-    <circle cx="500" cy="520" r="112" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="18"/>
-    <circle cx="500" cy="520" r="70" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
-    <!-- Instrument cluster glow -->
-    <ellipse cx="500" cy="450" rx="220" ry="80" fill="rgba(125,211,252,0.07)"/>
-  </svg>
-
-  <!-- Minimap -->
-  <div id="miniWrap">
-    <canvas id="miniMap" width="290" height="200"></canvas>
-    <div id="miniLegend">
-      <b>Minimap</b> • temperature zones + weather ahead<br>
-      <div id="legendBar"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <span class="pill">❄︎ snow</span>
-        <span class="pill">☔ rain</span>
-        <span class="pill">💨 wind</span>
-        <span class="pill">★ landmark</span>
-      </div>
-    </div>
-    <div id="miniTip"></div>
+  <div id="panoWrap">
+    <div id="panoA" class="panoLayer"></div>
+    <div id="panoB" class="panoLayer"></div>
   </div>
 
-  <!-- Toasts -->
-  <div id="toastWrap" aria-live="polite" aria-atomic="true"></div>
+  <canvas id="weatherCanvas"></canvas>
+
+  <div id="interior" aria-hidden="true">
+    <svg viewBox="0 0 1000 600" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+      <!-- roof -->
+      <path d="M0,0 L1000,0 L1000,110 C760,75 240,75 0,110 Z" fill="rgba(0,0,0,0.28)"/>
+      <!-- pillars (semi transparent) -->
+      <path d="M0,0 L145,0 L280,210 L280,600 L0,600 Z" fill="rgba(0,0,0,0.42)"/>
+      <path d="M1000,0 L855,0 L720,210 L720,600 L1000,600 Z" fill="rgba(0,0,0,0.42)"/>
+      <!-- dash -->
+      <path d="M0,430 C220,360 780,360 1000,430 L1000,600 L0,600 Z" fill="rgba(0,0,0,0.74)"/>
+      <!-- steering wheel hint -->
+      <circle cx="500" cy="528" r="110" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="18"/>
+      <circle cx="500" cy="528" r="70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"/>
+    </svg>
+  </div>
+
+  <div id="toyLayer"></div>
+
+  <!-- Always-visible mini bar -->
+  <div id="uiBar">
+    <button id="btnHud">HUD</button>
+    <button id="btnPanel">UI</button>
+    <button id="btnMap">Map</button>
+    <button id="btnHideAll">Hide</button>
+    <span class="pill">Keys: <b>H</b> hide • <b>M</b> map • <b>F</b> map full</span>
+  </div>
+
+  <button id="showUiBtn">Show UI</button>
 
   <!-- HUD -->
   <div id="hud">
-    <div class="row">
-      <div class="pill"><b>Speed</b>: <span id="hudSpeed">50</span> mph</div>
-      <div class="pill"><b>Progress</b>: <span id="hudPct">0.0%</span></div>
-      <div class="pill"><b>Miles</b>: <span id="hudMiles">0</span></div>
-      <div class="pill"><b>ETA</b>: <span id="hudEta">—</span></div>
+    <div class="row" style="justify-content:space-between">
+      <div class="row" style="gap:8px">
+        <span class="pill"><b>Speed</b>: <span id="hudSpeed">50</span> mph</span>
+        <span class="pill"><b>Progress</b>: <span id="hudPct">0.0%</span></span>
+        <span class="pill"><b>Miles</b>: <span id="hudMiles">0</span></span>
+        <span class="pill"><b>ETA</b>: <span id="hudEta">—</span></span>
+      </div>
+      <button id="hudCollapse" style="padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer">–</button>
     </div>
-    <div id="status">
-      Paste your <b>Google Maps API key</b> below, then click <b>Start</b>.
-      <span class="warn">Don’t commit the key to GitHub.</span>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <div class="pill"><b>Now</b>: <span id="hudNow">San Francisco, CA</span></div>
-      <div class="pill"><b>Next</b>: <span id="hudNext">—</span></div>
-      <div class="pill"><b>Weather</b>: <span id="hudWx">—</span></div>
+    <div class="hudBody">
+      <div id="status" style="margin-top:6px">
+        Paste your <b>Google Maps API key</b> below and press <b>Start</b>. <span class="warn">Don’t commit your key.</span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span class="pill"><b>Now</b>: <span id="hudNow">San Francisco, CA</span></span>
+        <span class="pill"><b>Next</b>: <span id="hudNext">—</span></span>
+        <span class="pill"><b>Weather</b>: <span id="hudWx">—</span></span>
+      </div>
     </div>
   </div>
 
-  <!-- Controls panel -->
+  <!-- Controls -->
   <div id="panel">
-    <h2>Controls</h2>
-    <div class="controls">
-      <input id="apiKey" type="text" placeholder="Google Maps API key (Maps JavaScript API enabled)"/>
-      <button id="startBtn">Start</button>
-      <button id="pauseBtn">Pause</button>
-      <button id="resetBtn">Reset</button>
-
-      <span class="pill">
-        <label><input id="rememberKey" type="checkbox" style="vertical-align:middle;margin-right:6px">Remember key on this device</label>
-      </span>
+    <div class="row" style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0">Controls</h2>
+      <button id="panelCollapse" style="padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer">–</button>
     </div>
-
-    <div class="subrow">
-      <div class="slider pill">
-        <label><b>Speed</b> <span id="speedLabel">50</span> mph</label>
-        <input id="speedSlider" type="range" min="50" max="250" value="50" step="1"/>
-        <small>(50–250)</small>
+    <div class="panelBody">
+      <div class="controls" style="margin-top:8px">
+        <input id="apiKey" type="text" placeholder="Google Maps API key (Maps JavaScript API enabled)"/>
+        <button id="startBtn">Start</button>
+        <button id="pauseBtn">Pause</button>
+        <button id="resetBtn">Reset</button>
+        <span class="pill"><label><input id="rememberKey" type="checkbox" style="vertical-align:middle;margin-right:6px">Remember key</label></span>
       </div>
 
-      <span class="pill">
-        <label><b>Temp units</b>
-          <select id="unitSel">
-            <option value="F">°F</option>
-            <option value="C">°C</option>
-          </select>
-        </label>
-      </span>
+      <div class="subrow">
+        <span class="pill">
+          <label><b>Speed</b> <span id="speedLabel">50</span> mph</label>
+          <input id="speedSlider" type="range" min="50" max="250" value="50" step="1"/>
+        </span>
 
-      <span class="pill">
-        <label><b>Route</b>
-          <select id="routeSel">
-            <option value="main">Main (I‑80-ish)</option>
-            <option value="south">Detour (southern)</option>
-          </select>
-        </label>
-      </span>
+        <span class="pill">
+          <label><b>Temp</b>
+            <select id="unitSel">
+              <option value="F">°F</option>
+              <option value="C">°C</option>
+            </select>
+          </label>
+        </span>
 
-      <span class="pill">
-        <label><input id="miniToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Show minimap</label>
-      </span>
+        <span class="pill">
+          <label><b>Route</b>
+            <select id="routeSel">
+              <option value="main">Main (I‑80-ish)</option>
+              <option value="south">Detour (southern)</option>
+            </select>
+          </label>
+        </span>
 
-      <span class="pill">
-        <label><input id="offlineToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Continue while away</label>
-      </span>
+        <span class="pill"><label><input id="offlineToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Continue while away</label></span>
+        <span class="pill"><label><input id="hazardToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Hazard warnings</label></span>
 
-      <span class="pill">
-        <label><input id="hazardToggle" type="checkbox" checked style="vertical-align:middle;margin-right:6px">Warn/stop for hazards</label>
-      </span>
+        <span class="pill">
+          <label><b>Map style</b>
+            <select id="mapStyleSel">
+              <option value="auto">Auto (try Google)</option>
+              <option value="google">Google Static</option>
+              <option value="simple">Simple grid</option>
+            </select>
+          </label>
+        </span>
+      </div>
 
-      <span class="pill">
-        <small>Shortcuts: <span class="kbd">Space</span> start/pause, <span class="kbd">R</span> reset, <span class="kbd">M</span> minimap, <span class="kbd">T</span> °C/°F, <span class="kbd">+</span>/<span class="kbd">-</span> speed</small>
-      </span>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <!-- Map panel -->
+  <div id="mapPanel">
+    <div id="mapHeader">
+      <div class="left">
+        <b>Map</b>
+        <span style="opacity:.9">•</span>
+        <span id="mapWhere" style="opacity:.92">You are here</span>
+      </div>
+      <div class="right">
+        <button id="mapFit">Fit Route</button>
+        <button id="mapWorld">World</button>
+        <button id="mapZoomIn">+</button>
+        <button id="mapZoomOut">–</button>
+        <button id="mapFull">Full</button>
+      </div>
     </div>
 
-    <div id="log" aria-label="Logbook"></div>
+    <div id="mapMain">
+      <div id="mapViewport">
+        <img id="mapImg" alt="Map background"/>
+        <canvas id="mapOverlay"></canvas>
+        <div id="mapTip"></div>
+      </div>
+      <div id="routeListWrap">
+        <h3>Route list (like Google Maps)</h3>
+        <div id="routeList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Hazard modal -->
   <div id="modalBack">
-    <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-      <h3 id="modalTitle">Weather hazard ahead</h3>
+    <div id="modal" role="dialog" aria-modal="true">
+      <h3>Weather hazard ahead</h3>
       <p id="modalBody"></p>
       <div class="actions">
         <button class="primary" id="modalWait30">Wait 30m</button>
@@ -280,888 +425,682 @@
         <button class="danger" id="modalContinue">Continue anyway</button>
         <button id="modalClose">Close</button>
       </div>
-      <p style="margin-top:10px;opacity:.8;font-size:12px">
-        Tip: if you just want to drive, uncheck <b>Warn/stop for hazards</b>.
-      </p>
+      <p style="margin-top:10px;opacity:.8;font-size:12px">Tip: uncheck <b>Hazard warnings</b> if you want to always keep driving.</p>
     </div>
   </div>
+
+  <div id="toastWrap" aria-live="polite" aria-atomic="true"></div>
 </div>
 
 <script>
 (() => {
-  // -----------------------------
-  // Config
-  // -----------------------------
-  const DEFAULT_SPEED = 50;         // mph
-  const MAX_SPEED = 250;            // mph
-  const HIGH_WIND_MPH = 50;          // mph (user requested)
-  const HEAVY_RAIN_MM_H = 8;         // mm/h (warning threshold)
-  const HEAVY_SNOW_CM_H = 1.5;       // cm/h (warning threshold; light)
-  const HAZARD_LOOKAHEAD_MILES = 250; // how far ahead to check
-  const WX_CACHE_MAX_AGE_MS = 25 * 60 * 1000; // 25 minutes
-  const WX_FORECAST_DAYS = 3;        // keep small to reduce payload
-  const HAZARD_CHECK_EVERY_MS = 35 * 1000; // periodic checks while driving
+  // ====== config ======
+  const DEFAULT_SPEED=50, MAX_SPEED=250;
+  const HIGH_WIND_MPH=50;           // stop if >= this
+  const HEAVY_RAIN_MM_H=8;          // warn/stop
+  const HEAVY_SNOW_CM_H=1.5;        // warn/stop
+  const HAZARD_LOOKAHEAD_MILES=250;
+  const WX_CACHE_MAX_AGE_MS=25*60*1000;
+  const WX_FORECAST_DAYS=3;
+  const HAZARD_CHECK_EVERY_MS=35*1000;
 
-  // -----------------------------
-  // Routes (approximate road corridors)
-  // -----------------------------
-  const ROUTES = {
-    main: {
-      name: "Main (I‑80-ish)",
-      waypoints: [
-        {name:"San Francisco, CA", lat:37.7749, lng:-122.4194, state:"CA", tier:"major"},
-        {name:"Oakland, CA", lat:37.8044, lng:-122.2711, state:"CA"},
-        {name:"Vallejo, CA", lat:38.1041, lng:-122.2566, state:"CA"},
-        {name:"Sacramento, CA", lat:38.5816, lng:-121.4944, state:"CA", tier:"major"},
-        {name:"Truckee, CA", lat:39.3279, lng:-120.1833, state:"CA"},
-        {name:"Reno, NV", lat:39.5296, lng:-119.8138, state:"NV", tier:"major"},
-        {name:"Winnemucca, NV", lat:40.9729, lng:-117.7357, state:"NV"},
-        {name:"Elko, NV", lat:40.8324, lng:-115.7631, state:"NV"},
-        {name:"Wendover, UT", lat:40.7391, lng:-114.0733, state:"UT"},
-        {name:"Salt Lake City, UT", lat:40.7608, lng:-111.8910, state:"UT", tier:"major", rare:true, note:"✨ Rare milestone: Great Salt Lake vibes"},
-        {name:"Evanston, WY", lat:41.2683, lng:-110.9632, state:"WY"},
-        {name:"Rock Springs, WY", lat:41.5875, lng:-109.2029, state:"WY"},
-        {name:"Rawlins, WY", lat:41.7911, lng:-107.2387, state:"WY"},
-        {name:"Laramie, WY", lat:41.3114, lng:-105.5911, state:"WY"},
-        {name:"Cheyenne, WY", lat:41.1400, lng:-104.8202, state:"WY", tier:"major"},
-        {name:"Sidney, NE", lat:41.1428, lng:-102.9771, state:"NE"},
-        {name:"North Platte, NE", lat:41.1403, lng:-100.7601, state:"NE"},
-        {name:"Kearney, NE", lat:40.6995, lng:-99.0815, state:"NE"},
-        {name:"Omaha, NE", lat:41.2565, lng:-95.9345, state:"NE", tier:"major"},
-        {name:"Des Moines, IA", lat:41.5868, lng:-93.6250, state:"IA", tier:"major"},
-        {name:"Iowa City, IA", lat:41.6611, lng:-91.5302, state:"IA"},
-        {name:"Davenport, IA", lat:41.5236, lng:-90.5776, state:"IA"},
-        {name:"Joliet, IL", lat:41.5250, lng:-88.0817, state:"IL"},
-        {name:"Chicago, IL", lat:41.8781, lng:-87.6298, state:"IL", tier:"major"},
-        {name:"South Bend, IN", lat:41.6764, lng:-86.2520, state:"IN"},
-        {name:"Toledo, OH", lat:41.6528, lng:-83.5379, state:"OH"},
-        {name:"Cleveland, OH", lat:41.4993, lng:-81.6944, state:"OH", tier:"major"},
-        {name:"Erie, PA", lat:42.1292, lng:-80.0851, state:"PA"},
-        {name:"Scranton, PA", lat:41.4089, lng:-75.6624, state:"PA"},
-        {name:"Newark, NJ", lat:40.7357, lng:-74.1724, state:"NJ"},
-        {name:"New York City, NY", lat:40.7128, lng:-74.0060, state:"NY", tier:"major"},
-      ],
-    },
-    south: {
-      name: "Detour (southern)",
-      waypoints: [
-        {name:"San Francisco, CA", lat:37.7749, lng:-122.4194, state:"CA", tier:"major"},
-        {name:"San Jose, CA", lat:37.3382, lng:-121.8863, state:"CA", tier:"major"},
-        {name:"Fresno, CA", lat:36.7378, lng:-119.7871, state:"CA"},
-        {name:"Bakersfield, CA", lat:35.3733, lng:-119.0187, state:"CA"},
-        {name:"Barstow, CA", lat:34.8958, lng:-117.0173, state:"CA"},
-        {name:"Las Vegas, NV", lat:36.1699, lng:-115.1398, state:"NV", tier:"major", rare:true, note:"✨ Rare milestone: neon desert detour"},
-        {name:"St George, UT", lat:37.0965, lng:-113.5684, state:"UT"},
-        {name:"Cedar City, UT", lat:37.6775, lng:-113.0619, state:"UT"},
-        {name:"Grand Junction, CO", lat:39.0639, lng:-108.5506, state:"CO"},
-        {name:"Denver, CO", lat:39.7392, lng:-104.9903, state:"CO", tier:"major"},
-        {name:"Colby, KS", lat:39.3958, lng:-101.0524, state:"KS"},
-        {name:"Salina, KS", lat:38.8403, lng:-97.6114, state:"KS"},
-        {name:"Kansas City, MO", lat:39.0997, lng:-94.5786, state:"MO", tier:"major"},
-        {name:"St Louis, MO", lat:38.6270, lng:-90.1994, state:"MO", tier:"major"},
-        {name:"Indianapolis, IN", lat:39.7684, lng:-86.1581, state:"IN", tier:"major"},
-        {name:"Columbus, OH", lat:39.9612, lng:-82.9988, state:"OH", tier:"major"},
-        {name:"Pittsburgh, PA", lat:40.4406, lng:-79.9959, state:"PA", tier:"major"},
-        {name:"Harrisburg, PA", lat:40.2732, lng:-76.8867, state:"PA"},
-        {name:"Newark, NJ", lat:40.7357, lng:-74.1724, state:"NJ"},
-        {name:"New York City, NY", lat:40.7128, lng:-74.0060, state:"NY", tier:"major"},
-      ],
-    },
+  // ====== routes ======
+  const ROUTES={
+    main:{name:"Main (I‑80-ish)",waypoints:[
+      {name:"San Francisco, CA",lat:37.7749,lng:-122.4194,state:"CA",tier:"major"},
+      {name:"Oakland, CA",lat:37.8044,lng:-122.2711,state:"CA"},
+      {name:"Vallejo, CA",lat:38.1041,lng:-122.2566,state:"CA"},
+      {name:"Sacramento, CA",lat:38.5816,lng:-121.4944,state:"CA",tier:"major"},
+      {name:"Truckee, CA",lat:39.3279,lng:-120.1833,state:"CA"},
+      {name:"Reno, NV",lat:39.5296,lng:-119.8138,state:"NV",tier:"major"},
+      {name:"Winnemucca, NV",lat:40.9729,lng:-117.7357,state:"NV"},
+      {name:"Elko, NV",lat:40.8324,lng:-115.7631,state:"NV"},
+      {name:"Wendover, UT",lat:40.7391,lng:-114.0733,state:"UT"},
+      {name:"Salt Lake City, UT",lat:40.7608,lng:-111.8910,state:"UT",tier:"major",rare:true,note:"✨ Rare milestone: Great Salt Lake vibes"},
+      {name:"Evanston, WY",lat:41.2683,lng:-110.9632,state:"WY"},
+      {name:"Rock Springs, WY",lat:41.5875,lng:-109.2029,state:"WY"},
+      {name:"Rawlins, WY",lat:41.7911,lng:-107.2387,state:"WY"},
+      {name:"Laramie, WY",lat:41.3114,lng:-105.5911,state:"WY"},
+      {name:"Cheyenne, WY",lat:41.14,lng:-104.8202,state:"WY",tier:"major"},
+      {name:"Sidney, NE",lat:41.1428,lng:-102.9771,state:"NE"},
+      {name:"North Platte, NE",lat:41.1403,lng:-100.7601,state:"NE"},
+      {name:"Kearney, NE",lat:40.6995,lng:-99.0815,state:"NE"},
+      {name:"Omaha, NE",lat:41.2565,lng:-95.9345,state:"NE",tier:"major"},
+      {name:"Des Moines, IA",lat:41.5868,lng:-93.625,state:"IA",tier:"major"},
+      {name:"Iowa City, IA",lat:41.6611,lng:-91.5302,state:"IA"},
+      {name:"Davenport, IA",lat:41.5236,lng:-90.5776,state:"IA"},
+      {name:"Joliet, IL",lat:41.525,lng:-88.0817,state:"IL"},
+      {name:"Chicago, IL",lat:41.8781,lng:-87.6298,state:"IL",tier:"major"},
+      {name:"South Bend, IN",lat:41.6764,lng:-86.252,state:"IN"},
+      {name:"Toledo, OH",lat:41.6528,lng:-83.5379,state:"OH"},
+      {name:"Cleveland, OH",lat:41.4993,lng:-81.6944,state:"OH",tier:"major"},
+      {name:"Erie, PA",lat:42.1292,lng:-80.0851,state:"PA"},
+      {name:"Scranton, PA",lat:41.4089,lng:-75.6624,state:"PA"},
+      {name:"Newark, NJ",lat:40.7357,lng:-74.1724,state:"NJ"},
+      {name:"New York City, NY",lat:40.7128,lng:-74.006,state:"NY",tier:"major"},
+    ]},
+    south:{name:"Detour (southern)",waypoints:[
+      {name:"San Francisco, CA",lat:37.7749,lng:-122.4194,state:"CA",tier:"major"},
+      {name:"San Jose, CA",lat:37.3382,lng:-121.8863,state:"CA",tier:"major"},
+      {name:"Fresno, CA",lat:36.7378,lng:-119.7871,state:"CA"},
+      {name:"Bakersfield, CA",lat:35.3733,lng:-119.0187,state:"CA"},
+      {name:"Barstow, CA",lat:34.8958,lng:-117.0173,state:"CA"},
+      {name:"Las Vegas, NV",lat:36.1699,lng:-115.1398,state:"NV",tier:"major",rare:true,note:"✨ Rare milestone: neon desert detour"},
+      {name:"St George, UT",lat:37.0965,lng:-113.5684,state:"UT"},
+      {name:"Cedar City, UT",lat:37.6775,lng:-113.0619,state:"UT"},
+      {name:"Grand Junction, CO",lat:39.0639,lng:-108.5506,state:"CO"},
+      {name:"Denver, CO",lat:39.7392,lng:-104.9903,state:"CO",tier:"major"},
+      {name:"Colby, KS",lat:39.3958,lng:-101.0524,state:"KS"},
+      {name:"Salina, KS",lat:38.8403,lng:-97.6114,state:"KS"},
+      {name:"Kansas City, MO",lat:39.0997,lng:-94.5786,state:"MO",tier:"major"},
+      {name:"St Louis, MO",lat:38.627,lng:-90.1994,state:"MO",tier:"major"},
+      {name:"Indianapolis, IN",lat:39.7684,lng:-86.1581,state:"IN",tier:"major"},
+      {name:"Columbus, OH",lat:39.9612,lng:-82.9988,state:"OH",tier:"major"},
+      {name:"Pittsburgh, PA",lat:40.4406,lng:-79.9959,state:"PA",tier:"major"},
+      {name:"Harrisburg, PA",lat:40.2732,lng:-76.8867,state:"PA"},
+      {name:"Newark, NJ",lat:40.7357,lng:-74.1724,state:"NJ"},
+      {name:"New York City, NY",lat:40.7128,lng:-74.006,state:"NY",tier:"major"},
+    ]}
   };
 
-  // Landmarks (extra; can be triggered near route)
-  const LANDMARKS = [
-    {name:"Golden Gate Bridge", lat:37.8199, lng:-122.4783, radius_m:2500, tier:"major"},
-    {name:"Bonneville Salt Flats", lat:40.7635, lng:-113.9067, radius_m:7000, tier:"rare"},
-    {name:"Gateway Arch (St Louis)", lat:38.6247, lng:-90.1848, radius_m:3000, tier:"major"},
-    {name:"Willis Tower (Chicago)", lat:41.8789, lng:-87.6359, radius_m:2500, tier:"major"},
-    {name:"Statue of Liberty (NYC)", lat:40.6892, lng:-74.0445, radius_m:3500, tier:"major"},
+  const LANDMARKS=[
+    {name:"Golden Gate Bridge",lat:37.8199,lng:-122.4783,radius_m:2500,tier:"major"},
+    {name:"Bonneville Salt Flats",lat:40.7635,lng:-113.9067,radius_m:7000,tier:"rare"},
+    {name:"Gateway Arch (St Louis)",lat:38.6247,lng:-90.1848,radius_m:3000,tier:"major"},
+    {name:"Willis Tower (Chicago)",lat:41.8789,lng:-87.6359,radius_m:2500,tier:"major"},
+    {name:"Statue of Liberty (NYC)",lat:40.6892,lng:-74.0445,radius_m:3500,tier:"major"},
   ];
 
-  // -----------------------------
-  // Helpers
-  // -----------------------------
-  const $ = (id) => document.getElementById(id);
+  // ====== helpers ======
+  const $=id=>document.getElementById(id);
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const mphToMps=mph=>mph*1609.344/3600;
+  const mpsToMph=mps=>mps*3600/1609.344;
+  const cToF=c=>c*9/5+32;
+  const toRad=d=>d*Math.PI/180;
+  const safeText=s=>String(s).replace(/[<>]/g,"");
 
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
-  function fmtTime(ms){
-    if (!Number.isFinite(ms)) return "—";
-    const d = new Date(ms);
-    return d.toLocaleString(undefined, {hour:"numeric", minute:"2-digit"});
-  }
-  function mphToMps(mph){ return mph * 1609.344 / 3600; }
-  function mpsToMph(mps){ return mps * 3600 / 1609.344; }
-  function cToF(c){ return c * 9/5 + 32; }
+  function fmtTime(ms){ if(!Number.isFinite(ms)) return "—"; return new Date(ms).toLocaleString(undefined,{hour:"numeric",minute:"2-digit"}); }
 
-  function haversine(a, b){
-    const R = 6371000;
-    const toRad = d => d*Math.PI/180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLon = toRad(b.lng - a.lng);
-    const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
-    const s = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+  function haversine(a,b){
+    const R=6371000;
+    const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lng-a.lng);
+    const lat1=toRad(a.lat), lat2=toRad(b.lat);
+    const s=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));
   }
 
-  function headingDeg(from, to){
-    const toRad = d => d*Math.PI/180;
-    const toDeg = r => r*180/Math.PI;
-    const φ1 = toRad(from.lat), φ2 = toRad(to.lat);
-    const λ1 = toRad(from.lng), λ2 = toRad(to.lng);
-    const y = Math.sin(λ2-λ1) * Math.cos(φ2);
-    const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2-λ1);
-    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  function headingDeg(from,to){
+    const toDeg=r=>r*180/Math.PI;
+    const φ1=toRad(from.lat),φ2=toRad(to.lat),λ1=toRad(from.lng),λ2=toRad(to.lng);
+    const y=Math.sin(λ2-λ1)*Math.cos(φ2);
+    const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2-λ1);
+    return (toDeg(Math.atan2(y,x))+360)%360;
   }
 
   function tempColorC(c){
-    // Map -10°C..35°C to blue..red
-    const t = clamp((c - (-10)) / (35 - (-10)), 0, 1);
-    // hue 210 (blue) -> 0 (red)
-    const hue = (1 - t) * 210;
+    const t=clamp((c-(-10))/(35-(-10)),0,1);
+    const hue=(1-t)*210; // blue->red
     return `hsl(${hue} 85% 55%)`;
   }
 
   function wxIcon(mode, windMph){
-    if (windMph >= HIGH_WIND_MPH) return "💨";
-    if (mode === "snow") return "❄︎";
-    if (mode === "rain") return "☔";
+    if(windMph>=HIGH_WIND_MPH) return "💨";
+    if(mode==="snow") return "❄︎";
+    if(mode==="rain") return "☔";
     return "•";
   }
 
-  function safeText(s){ return String(s).replace(/[<>]/g, ""); }
+  // ====== DOM ======
+  const wrap=$("wrap");
+  const panoAEl=$("panoA"), panoBEl=$("panoB");
+  const weatherCanvas=$("weatherCanvas");
+  const wctx=weatherCanvas.getContext("2d");
+  const toyLayer=$("toyLayer");
 
-  // -----------------------------
-  // UI elements
-  // -----------------------------
-  const apiKeyEl = $("apiKey");
-  const rememberKeyEl = $("rememberKey");
-  const startBtn = $("startBtn");
-  const pauseBtn = $("pauseBtn");
-  const resetBtn = $("resetBtn");
-  const speedSlider = $("speedSlider");
-  const speedLabel = $("speedLabel");
-  const hudSpeed = $("hudSpeed");
-  const unitSel = $("unitSel");
-  const routeSel = $("routeSel");
-  const miniToggle = $("miniToggle");
-  const offlineToggle = $("offlineToggle");
-  const hazardToggle = $("hazardToggle");
+  const hud=$("hud"), panel=$("panel");
+  const btnHud=$("btnHud"), btnPanel=$("btnPanel"), btnMap=$("btnMap"), btnHideAll=$("btnHideAll");
+  const showUiBtn=$("showUiBtn");
+  const hudCollapse=$("hudCollapse"), panelCollapse=$("panelCollapse");
 
-  const hudPct = $("hudPct");
-  const hudMiles = $("hudMiles");
-  const hudEta = $("hudEta");
-  const hudNow = $("hudNow");
-  const hudNext = $("hudNext");
-  const hudWx = $("hudWx");
-  const statusEl = $("status");
+  const apiKeyEl=$("apiKey");
+  const rememberKeyEl=$("rememberKey");
+  const startBtn=$("startBtn"), pauseBtn=$("pauseBtn"), resetBtn=$("resetBtn");
+  const speedSlider=$("speedSlider"), speedLabel=$("speedLabel");
+  const unitSel=$("unitSel"), routeSel=$("routeSel");
+  const offlineToggle=$("offlineToggle"), hazardToggle=$("hazardToggle");
+  const mapStyleSel=$("mapStyleSel");
 
-  const logEl = $("log");
-  const toastWrap = $("toastWrap");
+  const hudSpeed=$("hudSpeed"), hudPct=$("hudPct"), hudMiles=$("hudMiles"), hudEta=$("hudEta");
+  const hudNow=$("hudNow"), hudNext=$("hudNext"), hudWx=$("hudWx"), statusEl=$("status");
+  const logEl=$("log"), toastWrap=$("toastWrap");
 
-  const miniWrap = $("miniWrap");
-  const miniCanvas = $("miniMap");
-  const miniTip = $("miniTip");
+  const mapPanel=$("mapPanel");
+  const mapWhere=$("mapWhere");
+  const mapFitBtn=$("mapFit"), mapWorldBtn=$("mapWorld"), mapZoomInBtn=$("mapZoomIn"), mapZoomOutBtn=$("mapZoomOut"), mapFullBtn=$("mapFull");
+  const mapImg=$("mapImg");
+  const mapOverlay=$("mapOverlay");
+  const mapTip=$("mapTip");
+  const routeList=$("routeList");
 
-  const modalBack = $("modalBack");
-  const modalBody = $("modalBody");
-  const modalWait30 = $("modalWait30");
-  const modalWait60 = $("modalWait60");
-  const modalDetour = $("modalDetour");
-  const modalContinue = $("modalContinue");
-  const modalClose = $("modalClose");
+  const modalBack=$("modalBack");
+  const modalBody=$("modalBody");
+  const modalWait30=$("modalWait30"), modalWait60=$("modalWait60"), modalDetour=$("modalDetour");
+  const modalContinue=$("modalContinue"), modalClose=$("modalClose");
 
-  // Weather overlay canvas
-  const weatherCanvas = $("weatherCanvas");
-  const wctx = weatherCanvas.getContext("2d");
-
-  function resizeWeather(){
-    const dpr = window.devicePixelRatio || 1;
-    weatherCanvas.width = Math.floor(window.innerWidth * dpr);
-    weatherCanvas.height = Math.floor(window.innerHeight * dpr);
-    weatherCanvas.style.width = window.innerWidth + "px";
-    weatherCanvas.style.height = window.innerHeight + "px";
-    wctx.setTransform(dpr,0,0,dpr,0,0);
-  }
-  window.addEventListener("resize", resizeWeather);
-  resizeWeather();
-
-  // Minimap sizing for crispness
-  function resizeMini(){
-    const dpr = window.devicePixelRatio || 1;
-    miniCanvas.width = Math.floor(290 * dpr);
-    miniCanvas.height = Math.floor(200 * dpr);
-    miniCanvas.style.width = "290px";
-    miniCanvas.style.height = "200px";
-    const mctx = miniCanvas.getContext("2d");
-    mctx.setTransform(dpr,0,0,dpr,0,0);
-    drawMini();
-  }
-  window.addEventListener("resize", resizeMini);
-
-  // -----------------------------
-  // State + storage
-  // -----------------------------
-  const STORE_KEY = "roadtrip_sv_v4";
-  const defaultState = () => ({
-    running: false,
-    offlineContinue: true,
-    hazardMode: true,
-    routeId: "main",
-    wpIndex: 0,
-    t: 0,
-    meters: 0,
-    speedMph: DEFAULT_SPEED,
-    unit: "F",
-    simTimeMs: Date.now(),
-    lastRealMs: Date.now(),
-    lastMilestoneIndex: 0,
-    lastState: ROUTES.main.waypoints[0].state,
-    triggeredLandmarks: {},
-    log: [],
-    minimapVisible: true,
-    rememberKey: false,
-    apiKey: "" // only if rememberKey true
+  // ====== state ======
+  const STORE_KEY="roadtrip_sv_v5";
+  const defaultState=()=>({
+    running:false,
+    offlineContinue:true,
+    hazardMode:true,
+    routeId:"main",
+    wpIndex:0, t:0, meters:0,
+    speedMph:DEFAULT_SPEED,
+    unit:"F",
+    simTimeMs:Date.now(),
+    lastRealMs:Date.now(),
+    lastState:ROUTES.main.waypoints[0].state,
+    log:[],
+    rememberKey:false,
+    apiKey:"",
+    uiHidden:false,
+    hudCollapsed:false,
+    panelCollapsed:false,
+    mapVisible:true,
+    mapFullscreen:false,
+    mapStyle:"auto",
+    mapCenter:{lat:39.0,lng:-98.0},
+    mapZoom:4,
   });
 
-  function loadState(){
-    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; }
-  }
-  let state = Object.assign(defaultState(), loadState() || {});
-  // Clean up apiKey if rememberKey false
-  if (!state.rememberKey) state.apiKey = "";
+  function loadState(){ try{return JSON.parse(localStorage.getItem(STORE_KEY)||"null")}catch{return null} }
+  let state=Object.assign(defaultState(), loadState()||{});
+  if(!state.rememberKey) state.apiKey="";
 
   function saveState(){
-    const toSave = {...state};
-    if (!toSave.rememberKey) toSave.apiKey = "";
-    localStorage.setItem(STORE_KEY, JSON.stringify(toSave));
+    const s={...state};
+    if(!s.rememberKey) s.apiKey="";
+    localStorage.setItem(STORE_KEY, JSON.stringify(s));
   }
 
-  // Apply UI initial values
-  apiKeyEl.value = state.apiKey || "";
-  rememberKeyEl.checked = !!state.rememberKey;
-  offlineToggle.checked = !!state.offlineContinue;
-  hazardToggle.checked = !!state.hazardMode;
-  routeSel.value = state.routeId;
-  unitSel.value = state.unit;
-  speedSlider.value = String(clamp(state.speedMph, 50, MAX_SPEED));
-  speedLabel.textContent = String(state.speedMph);
-  hudSpeed.textContent = String(state.speedMph);
-  miniToggle.checked = !!state.minimapVisible;
-  miniWrap.style.display = state.minimapVisible ? "block" : "none";
+  // ====== apply initial UI state ======
+  apiKeyEl.value=state.apiKey||"";
+  rememberKeyEl.checked=!!state.rememberKey;
+  offlineToggle.checked=!!state.offlineContinue;
+  hazardToggle.checked=!!state.hazardMode;
+  routeSel.value=state.routeId;
+  unitSel.value=state.unit;
+  mapStyleSel.value=state.mapStyle||"auto";
 
-  // -----------------------------
-  // Route math (segments)
-  // -----------------------------
-  let route = ROUTES[state.routeId];
-  let segments = [];
-  let totalMeters = 0;
+  speedSlider.value=String(clamp(state.speedMph,50,MAX_SPEED));
+  speedLabel.textContent=String(state.speedMph);
+  hudSpeed.textContent=String(state.speedMph);
+
+  if(state.uiHidden) wrap.classList.add("uiHidden");
+  if(state.hudCollapsed) hud.classList.add("collapsed");
+  if(state.panelCollapsed) panel.classList.add("collapsed");
+  mapPanel.classList.toggle("hidden", !state.mapVisible);
+  mapPanel.classList.toggle("fullscreen", !!state.mapFullscreen);
+
+  // ====== route segments ======
+  let route=ROUTES[state.routeId];
+  let segments=[], totalMeters=0;
 
   function rebuildRoute(){
-    route = ROUTES[state.routeId];
-    segments = [];
-    totalMeters = 0;
-    const wps = route.waypoints;
-    for (let i=0;i<wps.length-1;i++){
-      const a=wps[i], b=wps[i+1];
+    route=ROUTES[state.routeId];
+    segments=[]; totalMeters=0;
+    const wps=route.waypoints;
+    for(let i=0;i<wps.length-1;i++){
+      const a=wps[i],b=wps[i+1];
       const m=haversine(a,b);
       segments.push({a,b,m});
       totalMeters += m;
     }
+    // Fit map to route on load if we don't have a saved view
+    if(!state.mapCenter || !Number.isFinite(state.mapCenter.lat)){
+      fitRouteMap();
+    }
+    renderRouteList();
   }
   rebuildRoute();
 
   function currentPos(){
-    if (state.wpIndex >= segments.length){
-      return route.waypoints[route.waypoints.length-1];
-    }
-    const seg = segments[state.wpIndex];
-    const t = clamp(state.t, 0, 1);
-    return {lat: seg.a.lat + (seg.b.lat - seg.a.lat)*t, lng: seg.a.lng + (seg.b.lng - seg.a.lng)*t};
+    if(state.wpIndex>=segments.length) return route.waypoints[route.waypoints.length-1];
+    const seg=segments[state.wpIndex];
+    const tt=clamp(state.t,0,1);
+    return {lat: seg.a.lat + (seg.b.lat-seg.a.lat)*tt, lng: seg.a.lng + (seg.b.lng-seg.a.lng)*tt};
   }
-  function milesFromMeters(m){ return Math.round(m/1609.344); }
-  function pctProgress(){
-    if (!totalMeters) return 0;
-    return clamp((state.meters/totalMeters)*100, 0, 100);
-  }
-  function remainingMeters(){
-    return Math.max(0, totalMeters - state.meters);
-  }
+  const milesFromMeters=m=>Math.round(m/1609.344);
+  const pctProgress=()=> totalMeters? clamp((state.meters/totalMeters)*100,0,100):0;
+  const remainingMeters=()=>Math.max(0,totalMeters-state.meters);
   function etaMs(){
-    const speedMps = mphToMps(state.speedMph);
-    if (speedMps <= 0) return Infinity;
-    return state.simTimeMs + (remainingMeters()/speedMps)*1000;
+    const sp=mphToMps(state.speedMph);
+    if(sp<=0) return Infinity;
+    return state.simTimeMs + (remainingMeters()/sp)*1000;
   }
-
-  function distanceMetersToWaypoint(index){
-    // along-route distance from current position to the waypoint at 'index'
-    if (index <= state.wpIndex) return 0;
-    let d = 0;
-    // remaining in current seg
-    if (state.wpIndex < segments.length){
-      const seg = segments[state.wpIndex];
-      d += (1 - clamp(state.t,0,1)) * seg.m;
+  function distanceMetersToWaypoint(idx){
+    if(idx<=state.wpIndex) return 0;
+    let d=0;
+    if(state.wpIndex<segments.length){
+      const seg=segments[state.wpIndex];
+      d += (1-clamp(state.t,0,1))*seg.m;
     }
-    for (let i=state.wpIndex+1;i<index;i++){
-      if (segments[i]) d += segments[i].m;
-    }
+    for(let i=state.wpIndex+1;i<idx;i++) if(segments[i]) d += segments[i].m;
     return d;
   }
 
-  // -----------------------------
-  // Logbook + toast
-  // -----------------------------
+  // ====== log / toast ======
   function renderLog(){
-    logEl.innerHTML = state.log.map(item => `<div class="item"><b>${item.ts}</b><br>${safeText(item.text)}</div>`).join("") ||
-      `<div class="item">Logbook empty… (yet)</div>`;
+    logEl.innerHTML = state.log.map(it=>`<div class="item"><b>${it.ts}</b><br>${safeText(it.text)}</div>`).join("")
+      || `<div class="item">Logbook empty… (yet)</div>`;
   }
   function pushLog(text){
-    const ts = new Date(state.simTimeMs).toLocaleString();
-    state.log.unshift({ts, text});
-    state.log = state.log.slice(0, 240);
-    renderLog();
-    saveState();
+    const ts=new Date(state.simTimeMs).toLocaleString();
+    state.log.unshift({ts,text});
+    state.log=state.log.slice(0,240);
+    renderLog(); saveState();
   }
-  function toast(html, ttl=4200){
-    const div = document.createElement("div");
-    div.className = "toast";
-    div.innerHTML = html;
+  function toast(html,ttl=4200){
+    const div=document.createElement("div");
+    div.className="toast";
+    div.innerHTML=html;
     toastWrap.appendChild(div);
-    setTimeout(() => { div.style.opacity="0"; div.style.transform="translateY(-4px)"; }, ttl-250);
-    setTimeout(() => div.remove(), ttl);
+    setTimeout(()=>{div.style.opacity="0";div.style.transform="translateY(-4px)"}, ttl-250);
+    setTimeout(()=>div.remove(), ttl);
   }
 
-  // -----------------------------
-  // Google Maps Street View
-  // -----------------------------
-  let googleReady = false;
-  let pano = null;
-  let svService = null;
-  let userLookUntil = 0;      // ms from performance.now()
-  let settingPov = false;     // prevent our own setPov from counting as user interaction
+  // ====== weather canvas resizing ======
+  function resizeWeather(){
+    const dpr=window.devicePixelRatio||1;
+    weatherCanvas.width=Math.floor(innerWidth*dpr);
+    weatherCanvas.height=Math.floor(innerHeight*dpr);
+    weatherCanvas.style.width=innerWidth+"px";
+    weatherCanvas.style.height=innerHeight+"px";
+    wctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  addEventListener("resize",()=>{ resizeWeather(); resizeMapOverlay(); updateStaticMap(true); });
+  resizeWeather();
+
+  // ====== Google Street View with cross-fade ======
+  let googleReady=false;
+  let panoA=null, panoB=null;
+  let svService=null;
+  let activePano="A";
+  let userLookUntil=0;
+  let settingPov=false;
 
   function loadGoogle(key){
-    return new Promise((resolve, reject) => {
-      if (googleReady) return resolve();
-      if (!key) return reject(new Error("Missing API key."));
-      window.gm_authFailure = () => reject(new Error("Google Maps auth failure (check referrer + enabled Maps JavaScript API)."));
-      const s = document.createElement("script");
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
-      s.async = true;
-      s.onerror = () => reject(new Error("Failed to load Google Maps JS script."));
-      s.onload = () => { googleReady = true; resolve(); };
+    return new Promise((resolve,reject)=>{
+      if(googleReady) return resolve();
+      if(!key) return reject(new Error("Missing API key."));
+      window.gm_authFailure=()=>reject(new Error("Google Maps auth failure (check referrers + enabled Maps JavaScript API)."));
+      const s=document.createElement("script");
+      s.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
+      s.async=true;
+      s.onerror=()=>reject(new Error("Failed to load Google Maps JS script."));
+      s.onload=()=>{googleReady=true; resolve();};
       document.head.appendChild(s);
     });
   }
 
+  function getActivePano(){ return activePano==="A" ? panoA : panoB; }
+  function getInactivePano(){ return activePano==="A" ? panoB : panoA; }
+
   async function ensureStreetView(){
-    const key = apiKeyEl.value.trim();
-    if (!key) throw new Error("Missing API key.");
+    const key=apiKeyEl.value.trim();
+    if(!key) throw new Error("Missing API key.");
     await loadGoogle(key);
 
-    if (!pano){
-      pano = new google.maps.StreetViewPanorama(document.getElementById("pano"), {
-        disableDefaultUI: true,
-        clickToGo: true,
-        showRoadLabels: false,
-        motionTracking: false,
-        motionTrackingControl: false,
+    if(!panoA){
+      panoA=new google.maps.StreetViewPanorama(panoAEl,{
+        disableDefaultUI:true,clickToGo:true,showRoadLabels:false,
+        motionTracking:false,motionTrackingControl:false
       });
-      svService = new google.maps.StreetViewService();
-      pano.addListener("pov_changed", () => {
-        if (settingPov) return;
-        userLookUntil = performance.now() + 2500; // let user look around for ~2.5s without snapping back
+      panoB=new google.maps.StreetViewPanorama(panoBEl,{
+        disableDefaultUI:true,clickToGo:true,showRoadLabels:false,
+        motionTracking:false,motionTrackingControl:false
       });
+
+      const onUserLook=()=>{
+        if(settingPov) return;
+        userLookUntil=performance.now()+2500;
+      };
+      panoA.addListener("pov_changed", onUserLook);
+      panoB.addListener("pov_changed", onUserLook);
+
+      svService=new google.maps.StreetViewService();
     }
   }
 
-  // -----------------------------
-  // Open‑Meteo weather (no key)
-  // -----------------------------
-  const wxCache = new Map(); // key -> { fetchedAt, hourlyTimesMs, tempC, precipMm, windMps, rainMm, snowCm, code }
-  function wxKey(lat,lng){ return `${lat.toFixed(3)},${lng.toFixed(3)}`; }
+  async function setPanoramaSmooth(panoId, pov){
+    const inactive = getInactivePano();
+    const active = getActivePano();
 
-  async function fetchWx(lat, lng){
-    const url = new URL("https://api.open-meteo.com/v1/forecast");
-    url.searchParams.set("latitude", lat);
-    url.searchParams.set("longitude", lng);
-    url.searchParams.set("hourly", "temperature_2m,precipitation,rain,snowfall,windspeed_10m,weather_code");
-    url.searchParams.set("forecast_days", String(WX_FORECAST_DAYS));
-    url.searchParams.set("timezone", "UTC");
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error("Weather fetch failed");
-    const data = await res.json();
-    const times = (data.hourly?.time || []).map(t => Date.parse(t + "Z")); // treat as UTC
+    // set new pano on inactive layer
+    inactive.setPano(panoId);
+    settingPov=true;
+    inactive.setPov(pov);
+    settingPov=false;
+
+    // fade
+    if(activePano==="A"){
+      panoBEl.style.opacity="1";
+      panoAEl.style.opacity="0";
+      activePano="B";
+    } else {
+      panoAEl.style.opacity="1";
+      panoBEl.style.opacity="0";
+      activePano="A";
+    }
+
+    // keep active in sync later (optional)
+    // active set to 0 opacity; but still exists
+    active.setPano(panoId);
+    settingPov=true;
+    active.setPov(pov);
+    settingPov=false;
+  }
+
+  // ====== Open-Meteo weather ======
+  const wxCache=new Map();
+  const wxKey=(lat,lng)=>`${lat.toFixed(3)},${lng.toFixed(3)}`;
+
+  async function fetchWx(lat,lng){
+    const url=new URL("https://api.open-meteo.com/v1/forecast");
+    url.searchParams.set("latitude",lat);
+    url.searchParams.set("longitude",lng);
+    url.searchParams.set("hourly","temperature_2m,precipitation,rain,snowfall,windspeed_10m,weather_code");
+    url.searchParams.set("forecast_days",String(WX_FORECAST_DAYS));
+    url.searchParams.set("timezone","UTC");
+    const res=await fetch(url.toString());
+    if(!res.ok) throw new Error("Weather fetch failed");
+    const data=await res.json();
+    const times=(data.hourly?.time||[]).map(t=>Date.parse(t+"Z"));
     return {
-      fetchedAt: Date.now(),
-      hourlyTimesMs: times,
-      tempC: data.hourly?.temperature_2m || [],
-      precipMm: data.hourly?.precipitation || [],
-      rainMm: data.hourly?.rain || [],
-      snowCm: (data.hourly?.snowfall || []).map(v => v ?? 0),
-      windMps: (data.hourly?.windspeed_10m || []).map(v => (v ?? 0) / 3.6), // km/h -> m/s
-      code: data.hourly?.weather_code || [],
+      fetchedAt:Date.now(),
+      hourlyTimesMs:times,
+      tempC:data.hourly?.temperature_2m||[],
+      precipMm:data.hourly?.precipitation||[],
+      rainMm:data.hourly?.rain||[],
+      snowCm:(data.hourly?.snowfall||[]).map(v=>v??0),
+      windMps:(data.hourly?.windspeed_10m||[]).map(v=>(v??0)/3.6),
+      code:data.hourly?.weather_code||[]
     };
   }
-
   async function getWxForecast(lat,lng){
-    const key = wxKey(lat,lng);
-    const cached = wxCache.get(key);
-    if (cached && (Date.now() - cached.fetchedAt) < WX_CACHE_MAX_AGE_MS) return cached;
-    const fresh = await fetchWx(lat,lng);
-    wxCache.set(key, fresh);
+    const key=wxKey(lat,lng);
+    const cached=wxCache.get(key);
+    if(cached && (Date.now()-cached.fetchedAt)<WX_CACHE_MAX_AGE_MS) return cached;
+    const fresh=await fetchWx(lat,lng);
+    wxCache.set(key,fresh);
     return fresh;
   }
-
-  function nearestHourIndex(wx, timeMs){
-    const arr = wx.hourlyTimesMs;
-    if (!arr.length) return -1;
-    let lo=0, hi=arr.length-1;
-    while (lo<hi){
-      const mid = Math.floor((lo+hi)/2);
-      if (arr[mid] < timeMs) lo = mid+1;
-      else hi = mid;
+  function nearestHourIndex(wx,timeMs){
+    const arr=wx.hourlyTimesMs; if(!arr.length) return -1;
+    let lo=0,hi=arr.length-1;
+    while(lo<hi){
+      const mid=(lo+hi>>1);
+      if(arr[mid]<timeMs) lo=mid+1; else hi=mid;
     }
-    const i = lo;
-    if (i>0 && Math.abs(arr[i-1]-timeMs) < Math.abs(arr[i]-timeMs)) return i-1;
+    const i=lo;
+    if(i>0 && Math.abs(arr[i-1]-timeMs)<Math.abs(arr[i]-timeMs)) return i-1;
     return i;
   }
-
-  function wxAtTime(wx, timeMs){
-    const i = nearestHourIndex(wx, timeMs);
-    if (i < 0) return null;
-    const tempC = wx.tempC[i] ?? null;
-    const precip = wx.precipMm[i] ?? 0;
-    const rain = wx.rainMm[i] ?? 0;
-    const snow = wx.snowCm[i] ?? 0;
-    const windMps = wx.windMps[i] ?? 0;
-    const mode = (snow > 0.2) ? "snow" : (rain > 0.1 || precip > 0.1 ? "rain" : "none");
-    const intensity = clamp(precip / 6, 0, 1);
-    return {tempC, precip, rain, snow, windMps, windMph: mpsToMph(windMps), code: wx.code[i], mode, intensity, timeMs: wx.hourlyTimesMs[i]};
+  function wxAtTime(wx,timeMs){
+    const i=nearestHourIndex(wx,timeMs); if(i<0) return null;
+    const tempC=wx.tempC[i]??null;
+    const precip=wx.precipMm[i]??0;
+    const rain=wx.rainMm[i]??0;
+    const snow=wx.snowCm[i]??0;
+    const windMps=wx.windMps[i]??0;
+    const mode=(snow>0.2)?"snow":(rain>0.1||precip>0.1?"rain":"none");
+    const intensity=clamp(precip/6,0,1);
+    return {tempC,precip,rain,snow,windMph:mpsToMph(windMps),mode,intensity,timeMs:wx.hourlyTimesMs[i]};
   }
 
-  // -----------------------------
-  // Weather overlay particles
-  // -----------------------------
-  const particles = [];
-  let wxMode = "none";
-  let wxIntensity = 0;
-  let wxWindMph = 0;
+  // ====== particles (fall from top) ======
+  const particles=[];
+  let wxMode="none", wxIntensity=0, wxWindMph=0;
 
   function spawnParticles(){
-    const count = wxMode === "rain" ? Math.floor(160 + wxIntensity*320) :
-                  wxMode === "snow" ? Math.floor(90 + wxIntensity*240) : 0;
-    while (particles.length < count){
+    const count = wxMode==="rain" ? Math.floor(160+wxIntensity*320) :
+                  (wxMode==="snow" ? Math.floor(90+wxIntensity*240) : 0);
+
+    while(particles.length<count){
       particles.push({
-        x: Math.random()*window.innerWidth,
-        y: Math.random()*window.innerHeight,
-        vx: wxMode==="rain" ? -40 : (-8 + Math.random()*16),
-        vy: wxMode==="rain" ? (420 + Math.random()*260) : (60 + Math.random()*100),
+        x: Math.random()*innerWidth,
+        y: -Math.random()*innerHeight,   // START FROM TOP (negative y)
+        vx: wxMode==="rain" ? -30 : (-6 + Math.random()*12),
+        vy: wxMode==="rain" ? (420 + Math.random()*260) : (55 + Math.random()*95),
         s: wxMode==="rain" ? (10 + Math.random()*18) : (2 + Math.random()*4),
         a: 0.35 + Math.random()*0.35
       });
     }
-    while (particles.length > count) particles.pop();
+    while(particles.length>count) particles.pop();
   }
 
   function drawWeather(dt){
-    wctx.clearRect(0,0,window.innerWidth,window.innerHeight);
-    if (wxMode === "none" || wxIntensity <= 0.02) return;
-
-    const g = wctx.createLinearGradient(0,0,0,window.innerHeight);
-    g.addColorStop(0, `rgba(255,255,255,${0.02*wxIntensity})`);
-    g.addColorStop(1, `rgba(255,255,255,0)`);
-    wctx.fillStyle = g;
-    wctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+    wctx.clearRect(0,0,innerWidth,innerHeight);
+    if(wxMode==="none" || wxIntensity<=0.02) return;
 
     wctx.save();
-    if (wxMode === "rain"){
-      wctx.strokeStyle = "rgba(200,230,255,0.75)";
-      wctx.lineWidth = 1;
-      for (const p of particles){
-        p.x += (p.vx - wxWindMph*0.10) * dt;
-        p.y += p.vy * dt;
-        if (p.y > window.innerHeight+40 || p.x < -80){
-          p.x = window.innerWidth + Math.random()*140;
+    if(wxMode==="rain"){
+      wctx.strokeStyle="rgba(200,230,255,0.75)";
+      wctx.lineWidth=1;
+      for(const p of particles){
+        p.x += (p.vx - wxWindMph*0.08)*dt;
+        p.y += p.vy*dt;
+        if(p.y>innerHeight+60 || p.x<-100){
+          p.x = innerWidth + Math.random()*160;
           p.y = -Math.random()*240;
         }
         wctx.globalAlpha = p.a * (0.35 + 0.65*wxIntensity);
         wctx.beginPath();
-        wctx.moveTo(p.x, p.y);
+        wctx.moveTo(p.x,p.y);
         wctx.lineTo(p.x - p.s*0.35, p.y - p.s);
         wctx.stroke();
       }
-    } else if (wxMode === "snow"){
-      wctx.fillStyle = "rgba(255,255,255,0.9)";
-      for (const p of particles){
-        p.x += (p.vx - wxWindMph*0.06) * dt;
-        p.y += p.vy * dt;
-        if (p.y > window.innerHeight+30){
-          p.x = Math.random()*window.innerWidth;
-          p.y = -Math.random()*140;
+    } else if(wxMode==="snow"){
+      wctx.fillStyle="rgba(255,255,255,0.9)";
+      for(const p of particles){
+        p.x += (p.vx - wxWindMph*0.05)*dt;
+        p.y += p.vy*dt;
+        if(p.y>innerHeight+40){
+          p.x = Math.random()*innerWidth;
+          p.y = -Math.random()*200;
         }
-        if (p.x < -30) p.x = window.innerWidth+30;
-        if (p.x > window.innerWidth+30) p.x = -30;
+        if(p.x<-40) p.x=innerWidth+40;
+        if(p.x>innerWidth+40) p.x=-40;
+
         wctx.globalAlpha = p.a * (0.30 + 0.70*wxIntensity);
         wctx.beginPath();
-        wctx.arc(p.x, p.y, p.s, 0, Math.PI*2);
+        wctx.arc(p.x,p.y,p.s,0,Math.PI*2);
         wctx.fill();
       }
     }
     wctx.restore();
   }
 
-  // -----------------------------
-  // Minimap (route + wx markers + temp zones)
-  // -----------------------------
-  const miniCtx = miniCanvas.getContext("2d");
-  const allRoutesBounds = (() => {
-    let minLat=  999, maxLat=-999, minLng=  999, maxLng=-999;
-    for (const r of Object.values(ROUTES)){
-      for (const p of r.waypoints){
-        minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
-        minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
-      }
-    }
-    return {minLat,maxLat,minLng,maxLng};
-  })();
+  // ====== toys (simple pendulum) ======
+  const toys = [];
+  function addToy(id, className, anchorX, anchorY){
+    const el=document.createElement("div");
+    el.className=`toy ${className}`;
+    el.dataset.id=id;
+    toyLayer.appendChild(el);
 
-  function proj(lat,lng){
-    const pad = 12;
-    const w = 290, h = 200;
-    const {minLat,maxLat,minLng,maxLng} = allRoutesBounds;
-    const x = pad + (lng - minLng) / (maxLng - minLng) * (w - pad*2);
-    const y = pad + (maxLat - lat) / (maxLat - minLat) * (h - pad*2);
-    return {x,y};
-  }
-
-  function wxSampleIndices(routeId){
-    const wps = ROUTES[routeId].waypoints;
-    const out = new Set();
-    for (let i=0;i<wps.length;i++){
-      if (i % 3 === 0) out.add(i);
-      if (wps[i].tier === "major") out.add(i);
-      if (wps[i].rare) out.add(i);
-    }
-    return [...out].sort((a,b)=>a-b);
-  }
-
-  let wxSamples = wxSampleIndices(state.routeId);
-  let wxSampleData = new Map(); // index -> wx snapshot at sim/ETA time
-
-  async function refreshWxSamples(){
-    const wps = route.waypoints;
-    const simNow = state.simTimeMs;
-    const speedMps = mphToMps(state.speedMph);
-
-    for (const idx of wxSamples){
-      const wp = wps[idx];
-      try{
-        const wx = await getWxForecast(wp.lat, wp.lng);
-        let tMs = simNow;
-        if (idx > state.wpIndex){
-          const dist = distanceMetersToWaypoint(idx);
-          tMs = simNow + (dist / speedMps) * 1000;
-        }
-        const snap = wxAtTime(wx, tMs);
-        if (snap) wxSampleData.set(idx, snap);
-      } catch {}
-    }
-    drawMini();
-  }
-
-  function drawMini(){
-    if (!state.minimapVisible) return;
-
-    const w = 290, h = 200;
-    miniCtx.clearRect(0,0,w,h);
-
-    miniCtx.globalAlpha = 1;
-    miniCtx.fillStyle = "rgba(0,0,0,.20)";
-    miniCtx.fillRect(0,0,w,h);
-
-    miniCtx.strokeStyle = "rgba(255,255,255,.06)";
-    for (let i=0;i<6;i++){
-      const x = 10 + i*54;
-      miniCtx.beginPath(); miniCtx.moveTo(x, 8); miniCtx.lineTo(x, h-8); miniCtx.stroke();
-    }
-    for (let i=0;i<4;i++){
-      const y = 10 + i*48;
-      miniCtx.beginPath(); miniCtx.moveTo(8, y); miniCtx.lineTo(w-8, y); miniCtx.stroke();
-    }
-
-    const drawRouteLine = (r, alpha, dashed) => {
-      const pts = r.waypoints.map(p => proj(p.lat,p.lng));
-      miniCtx.save();
-      miniCtx.globalAlpha = alpha;
-      miniCtx.lineWidth = 3;
-      miniCtx.strokeStyle = "rgba(255,255,255,.20)";
-      if (dashed) miniCtx.setLineDash([6,5]); else miniCtx.setLineDash([]);
-      miniCtx.beginPath();
-      pts.forEach((p,i)=>{ if(i===0) miniCtx.moveTo(p.x,p.y); else miniCtx.lineTo(p.x,p.y); });
-      miniCtx.stroke();
-      miniCtx.restore();
+    const toy={
+      id, el,
+      ax: anchorX, ay: anchorY,
+      angle: 0.12*(Math.random()-0.5),
+      av: 0,
+      len: 55,
+      dragging:false,
+      dragStartX:0,
+      dragStartAngle:0
     };
 
-    const otherRouteId = state.routeId === "main" ? "south" : "main";
-    drawRouteLine(ROUTES[otherRouteId], 0.22, true);
+    el.addEventListener("pointerdown",(e)=>{
+      toy.dragging=true;
+      el.setPointerCapture(e.pointerId);
+      toy.dragStartX=e.clientX;
+      toy.dragStartAngle=toy.angle;
+    });
+    el.addEventListener("pointermove",(e)=>{
+      if(!toy.dragging) return;
+      const dx=e.clientX-toy.dragStartX;
+      toy.angle = clamp(toy.dragStartAngle + dx*0.005, -1.1, 1.1);
+      toy.av = 0;
+    });
+    el.addEventListener("pointerup",()=>{ toy.dragging=false; });
+    el.addEventListener("pointercancel",()=>{ toy.dragging=false; });
 
-    const wps = route.waypoints;
-    for (let i=0;i<wps.length-1;i++){
-      const a=wps[i], b=wps[i+1];
-      const pa = proj(a.lat,a.lng), pb = proj(b.lat,b.lng);
-
-      let tempC = null;
-      const wa = wxSampleData.get(i);
-      const wb = wxSampleData.get(i+1);
-      if (wa && wb && wa.tempC != null && wb.tempC != null) tempC = (wa.tempC + wb.tempC) / 2;
-      else if (wa && wa.tempC != null) tempC = wa.tempC;
-      else if (wb && wb.tempC != null) tempC = wb.tempC;
-
-      miniCtx.lineWidth = 4;
-      miniCtx.strokeStyle = tempC == null ? "rgba(255,255,255,.35)" : tempColorC(tempC);
-      miniCtx.globalAlpha = 0.85;
-      miniCtx.beginPath();
-      miniCtx.moveTo(pa.x,pa.y);
-      miniCtx.lineTo(pb.x,pb.y);
-      miniCtx.stroke();
-    }
-
-    miniCtx.globalAlpha = 1;
-    for (const idx of wxSamples){
-      const wp = wps[idx];
-      const p = proj(wp.lat, wp.lng);
-      const snap = wxSampleData.get(idx);
-      const tempC = snap?.tempC ?? null;
-      const windMph = snap?.windMph ?? 0;
-      const mode = snap?.mode ?? "none";
-
-      const color = tempC==null ? "rgba(255,255,255,.7)" : tempColorC(tempC);
-      miniCtx.fillStyle = color;
-      miniCtx.strokeStyle = "rgba(0,0,0,.5)";
-      miniCtx.lineWidth = 2;
-      miniCtx.beginPath();
-      miniCtx.arc(p.x,p.y,5,0,Math.PI*2);
-      miniCtx.fill();
-      miniCtx.stroke();
-
-      miniCtx.font = "12px system-ui";
-      miniCtx.fillStyle = "rgba(255,255,255,.92)";
-      miniCtx.fillText(wxIcon(mode, windMph), p.x+7, p.y+4);
-
-      if (wp.tier === "major" || wp.rare){
-        miniCtx.strokeStyle = wp.rare ? "rgba(125,211,252,.9)" : "rgba(255,255,255,.55)";
-        miniCtx.lineWidth = 2;
-        miniCtx.beginPath();
-        miniCtx.arc(p.x,p.y,9,0,Math.PI*2);
-        miniCtx.stroke();
-      }
-    }
-
-    for (const lm of LANDMARKS){
-      const p = proj(lm.lat, lm.lng);
-      miniCtx.font = "13px system-ui";
-      miniCtx.fillStyle = lm.tier === "rare" ? "rgba(125,211,252,.95)" : "rgba(255,255,255,.8)";
-      miniCtx.fillText("★", p.x-4, p.y+4);
-    }
-
-    const cp = currentPos();
-    const pc = proj(cp.lat, cp.lng);
-    miniCtx.fillStyle = "rgba(255,255,255,1)";
-    miniCtx.strokeStyle = "rgba(0,0,0,.5)";
-    miniCtx.lineWidth = 2;
-    miniCtx.beginPath();
-    miniCtx.arc(pc.x,pc.y,6,0,Math.PI*2);
-    miniCtx.fill();
-    miniCtx.stroke();
+    toys.push(toy);
   }
 
-  function showMiniTip(text){
-    miniTip.innerHTML = text;
-    miniTip.style.display = "block";
-  }
-  function hideMiniTip(){
-    miniTip.style.display = "none";
-  }
+  // Always include dice + freshener (you can later tie these to achievements)
+  addToy("dice","dice", 0.50, 0.03);
+  addToy("freshener","freshener", 0.58, 0.035);
 
-  miniCanvas.addEventListener("mousemove", (e) => {
-    if (!state.minimapVisible) return;
-    const rect = miniCanvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const wps = route.waypoints;
-    let best = null;
-    for (const idx of wxSamples){
-      const wp = wps[idx];
-      const p = proj(wp.lat, wp.lng);
-      const d = Math.hypot(p.x-x, p.y-y);
-      if (d < 14 && (!best || d < best.d)) best = {idx, d};
+  function updateToys(dt){
+    const windPush = clamp(wxWindMph/80, 0, 1);
+    for(const t of toys){
+      if(t.dragging) continue;
+      const g = 6.0;
+      const damp = 0.86;
+      const force = -g*Math.sin(t.angle) + (Math.random()-0.5)*0.08 + windPush*(Math.random()-0.5)*0.28;
+      t.av = (t.av + force*dt) * damp;
+      t.angle += t.av*dt;
+      t.angle = clamp(t.angle, -1.2, 1.2);
     }
-    if (!best){ hideMiniTip(); return; }
-    const idx = best.idx;
-    const wp = wps[idx];
-    const snap = wxSampleData.get(idx);
-    const tempC = snap?.tempC;
-    const windMph = snap?.windMph ?? 0;
-    const precip = snap?.precip ?? 0;
-    const mode = snap?.mode ?? "none";
 
-    const tempStr = (tempC==null) ? "—" : (state.unit==="C" ? `${tempC.toFixed(0)}°C` : `${cToF(tempC).toFixed(0)}°F`);
-    const windStr = `${windMph.toFixed(0)} mph`;
-    const whenStr = snap?.timeMs ? fmtTime(snap.timeMs) : "—";
-    showMiniTip(`<b>${safeText(wp.name)}</b><br>${wxIcon(mode, windMph)} ${mode} • precip ${precip.toFixed(1)} mm/h<br>💨 wind ${windStr}<br>🌡 ${tempStr} • <span style="opacity:.85">${whenStr}</span>`);
-  });
-  miniCanvas.addEventListener("mouseleave", hideMiniTip);
+    // render
+    const w=innerWidth, h=innerHeight;
+    for(const t of toys){
+      const x = t.ax*w;
+      const y = t.ay*h;
+      const px = x;
+      const py = y;
+      t.el.style.left = (px - 22) + "px";
+      t.el.style.top  = (py + 12) + "px";
+      t.el.style.transform = `rotate(${t.angle}rad) translateY(${t.len}px)`;
+      t.el.style.opacity = "0.95";
+    }
+  }
 
-  // -----------------------------
-  // Hazards (rain/wind) + modal
-  // -----------------------------
-  let hazardActive = false;
-
+  // ====== hazard modal ======
+  let hazardActive=false;
   function openHazardModal(info){
-    hazardActive = true;
-    state.running = false;
-    saveState();
-
-    const icon = info.type === "wind" ? "💨" : (info.type === "rain" ? "☔" : "❄︎");
-    const tempStr = info.tempC == null ? "—" : (state.unit==="C" ? `${info.tempC.toFixed(0)}°C` : `${cToF(info.tempC).toFixed(0)}°F`);
+    hazardActive=true;
+    state.running=false; saveState();
+    const icon=info.type==="wind"?"💨":(info.type==="rain"?"☔":"❄︎");
+    const tempStr=(info.tempC==null)?"—":(state.unit==="C"?`${info.tempC.toFixed(0)}°C`:`${cToF(info.tempC).toFixed(0)}°F`);
     modalBody.innerHTML =
-      `<b>${icon} ${safeText(info.title)}</b><br>` +
-      `Near <b>${safeText(info.where)}</b> around <b>${safeText(info.when)}</b>.<br>` +
-      `Forecast: precip <b>${info.precip.toFixed(1)} mm/h</b>, wind <b>${info.windMph.toFixed(0)} mph</b>, temp <b>${tempStr}</b>.<br>` +
-      `<span class="warn">Choose to wait it out, detour, or continue.</span>`;
-    modalBack.style.display = "block";
-    toast(`<b>Hazard detected.</b> Paused the drive.`, 3200);
+      `<b>${icon} ${safeText(info.title)}</b><br>`+
+      `Near <b>${safeText(info.where)}</b> around <b>${safeText(info.when)}</b>.<br>`+
+      `Forecast: precip <b>${info.precip.toFixed(1)} mm/h</b>, wind <b>${info.windMph.toFixed(0)} mph</b>, temp <b>${tempStr}</b>.`;
+    modalBack.style.display="block";
+    toast(`<b>Hazard detected.</b> Paused the drive.`,3200);
     pushLog(`⚠️ Hazard ahead: ${info.title} near ${info.where} (~${info.when}).`);
   }
+  function closeHazardModal(){ modalBack.style.display="none"; hazardActive=false; }
 
-  function closeHazardModal(){
-    modalBack.style.display = "none";
-    hazardActive = false;
-  }
-
-  modalClose.addEventListener("click", () => closeHazardModal());
-  modalContinue.addEventListener("click", () => {
+  modalClose.addEventListener("click", closeHazardModal);
+  modalContinue.addEventListener("click", ()=>{
     closeHazardModal();
-    state.running = true;
-    saveState();
-    toast(`<b>Continuing.</b>`, 2200);
+    state.running=true; saveState();
+    toast(`<b>Continuing.</b>`,2200);
   });
-  modalWait30.addEventListener("click", () => {
-    state.simTimeMs += 30 * 60 * 1000;
-    saveState();
-    toast(`<b>Waited 30 minutes.</b> Re-checking weather…`, 2600);
+  modalWait30.addEventListener("click", ()=>{
+    state.simTimeMs += 30*60*1000; saveState();
+    toast(`<b>Waited 30 minutes.</b> Re-checking…`,2600);
     closeHazardModal();
   });
-  modalWait60.addEventListener("click", () => {
-    state.simTimeMs += 60 * 60 * 1000;
-    saveState();
-    toast(`<b>Waited 1 hour.</b> Re-checking weather…`, 2600);
+  modalWait60.addEventListener("click", ()=>{
+    state.simTimeMs += 60*60*1000; saveState();
+    toast(`<b>Waited 1 hour.</b> Re-checking…`,2600);
     closeHazardModal();
   });
-  modalDetour.addEventListener("click", () => {
-    const newId = state.routeId === "main" ? "south" : "main";
+  modalDetour.addEventListener("click", ()=>{
+    const newId = state.routeId==="main" ? "south" : "main";
     switchRoute(newId, true);
     closeHazardModal();
-    state.running = true;
-    saveState();
-    toast(`<b>Detour selected:</b> ${safeText(ROUTES[newId].name)}`, 3400);
+    state.running=true; saveState();
+    toast(`<b>Detour selected:</b> ${safeText(ROUTES[newId].name)}`,3400);
     pushLog(`🧭 Took detour route: ${ROUTES[newId].name}.`);
   });
 
-  // -----------------------------
-  // Landmarks & milestones
-  // -----------------------------
+  // ====== milestones + landmarks ======
   function waypointReached(i){
-    const wp = route.waypoints[i];
-    if (!wp) return;
-
-    if (wp.state && wp.state !== state.lastState){
-      toast(`<b>State line!</b> Entered <b>${safeText(wp.state)}</b>.`);
+    const wp=route.waypoints[i]; if(!wp) return;
+    if(wp.state && wp.state!==state.lastState){
+      toast(`<b>State line!</b> Entered <b>${safeText(wp.state)}</b>.`,3200);
       pushLog(`🗺️ Crossed into ${wp.state}.`);
-      state.lastState = wp.state;
+      state.lastState=wp.state;
     }
-
-    if (wp.tier === "major"){
-      toast(`🏙️ <b>Major stop:</b> ${safeText(wp.name)}`);
+    if(wp.tier==="major"){
+      toast(`🏙️ <b>Major stop:</b> ${safeText(wp.name)}`,3600);
       pushLog(`🏙️ Major city: ${wp.name}.`);
     } else {
       pushLog(`Passed ${wp.name}.`);
     }
-
-    if (wp.rare){
-      toast(`✨ <b>Rare milestone:</b> ${safeText(wp.name)} — ${safeText(wp.note || "")}`, 5200);
-      pushLog(`✨ Rare milestone: ${wp.name}. ${wp.note || ""}`);
+    if(wp.rare){
+      toast(`✨ <b>Rare milestone:</b> ${safeText(wp.name)} — ${safeText(wp.note||"")}`,5200);
+      pushLog(`✨ Rare milestone: ${wp.name}. ${wp.note||""}`);
     }
-
-    state.lastMilestoneIndex = Math.max(state.lastMilestoneIndex, i);
     saveState();
   }
 
   function checkLandmarksNear(pos){
-    for (const lm of LANDMARKS){
-      const key = lm.name;
-      if (state.triggeredLandmarks[key]) continue;
-      const d = haversine(pos, lm);
-      if (d <= lm.radius_m){
-        state.triggeredLandmarks[key] = true;
-        saveState();
-        if (lm.tier === "rare"){
-          toast(`✨ <b>Rare landmark:</b> ${safeText(lm.name)}!`, 6000);
-          pushLog(`✨ Rare landmark spotted: ${lm.name}.`);
-        } else {
-          toast(`★ <b>Landmark:</b> ${safeText(lm.name)}`, 5200);
-          pushLog(`★ Landmark: ${lm.name}.`);
-        }
+    for(const lm of LANDMARKS){
+      const d=haversine(pos,lm);
+      if(d<=lm.radius_m){
+        // lightweight: log once per session
+        const key="LM_"+lm.name;
+        if(state[key]) continue;
+        state[key]=true; saveState();
+        toast(`★ <b>Landmark:</b> ${safeText(lm.name)}`,5200);
+        pushLog(`★ Landmark: ${lm.name}.`);
       }
     }
   }
 
-  // -----------------------------
-  // Route switching
-  // -----------------------------
+  // ====== switching routes ======
   function switchRoute(newRouteId, keepPosition=true){
-    const oldPos = currentPos();
-    state.routeId = newRouteId;
+    const oldPos=currentPos();
+    state.routeId=newRouteId;
+    routeSel.value=newRouteId;
     rebuildRoute();
-    wxSamples = wxSampleIndices(state.routeId);
-    wxSampleData = new Map();
-    state.lastMilestoneIndex = 0;
-    state.lastState = route.waypoints[0].state;
-
-    if (keepPosition){
-      let bestI = 0, bestD = Infinity;
-      for (let i=0;i<route.waypoints.length;i++){
-        const d = haversine(oldPos, route.waypoints[i]);
-        if (d < bestD){ bestD = d; bestI = i; }
+    if(keepPosition){
+      // snap to nearest waypoint in new route
+      let bestI=0,bestD=Infinity;
+      for(let i=0;i<route.waypoints.length;i++){
+        const d=haversine(oldPos, route.waypoints[i]);
+        if(d<bestD){bestD=d;bestI=i;}
       }
-      state.wpIndex = clamp(bestI, 0, segments.length);
-      state.t = 0;
-      let m=0;
-      for (let i=0;i<state.wpIndex;i++) m += segments[i]?.m || 0;
-      state.meters = m;
+      state.wpIndex=clamp(bestI,0,segments.length);
+      state.t=0;
+      let m=0; for(let i=0;i<state.wpIndex;i++) m += segments[i]?.m||0;
+      state.meters=m;
     } else {
-      state.wpIndex = 0;
-      state.t = 0;
-      state.meters = 0;
+      state.wpIndex=0; state.t=0; state.meters=0;
     }
-
+    fitRouteMap();
+    renderRouteList();
+    updateStaticMap(true);
     saveState();
-    drawMini();
-    refreshWxSamples();
   }
 
-  // -----------------------------
-  // Driving / progression
-  // -----------------------------
+  // ====== driving ======
   function advance(dt){
-    const speedMps = mphToMps(state.speedMph);
-    let remaining = dt * speedMps;
+    const sp=mphToMps(state.speedMph);
+    let remaining = dt*sp;
 
-    while (remaining > 0 && state.wpIndex < segments.length){
-      const seg = segments[state.wpIndex];
-      const segRemaining = (1 - clamp(state.t,0,1)) * seg.m;
-      if (remaining >= segRemaining){
+    while(remaining>0 && state.wpIndex<segments.length){
+      const seg=segments[state.wpIndex];
+      const segRemaining=(1-clamp(state.t,0,1))*seg.m;
+      if(remaining>=segRemaining){
         remaining -= segRemaining;
         state.meters += segRemaining;
         state.wpIndex += 1;
@@ -1169,358 +1108,823 @@
         waypointReached(state.wpIndex);
       } else {
         state.meters += remaining;
-        state.t += remaining / seg.m;
-        remaining = 0;
+        state.t += remaining/seg.m;
+        remaining=0;
       }
     }
 
-    if (state.wpIndex >= segments.length){
-      state.running = false;
-      toast(`🎉 <b>Arrived near NYC.</b> Trip complete!`, 6000);
+    if(state.wpIndex>=segments.length){
+      state.running=false;
+      toast(`🎉 <b>Arrived near NYC.</b> Trip complete!`,6000);
       pushLog("🎉 Arrived near NYC. Trip complete!");
     }
-
     saveState();
   }
 
   function handleReturn(){
-    const now = Date.now();
-    const elapsed = Math.max(0, (now - (state.lastRealMs || now)) / 1000);
-    if (state.offlineContinue && state.running && elapsed > 2){
-      const milesDriven = Math.max(0, Math.round(state.speedMph * (elapsed / 3600)));
+    const now=Date.now();
+    const elapsed=Math.max(0,(now-(state.lastRealMs||now))/1000);
+    if(state.offlineContinue && state.running && elapsed>2){
+      const milesDriven=Math.max(0,Math.round(state.speedMph*(elapsed/3600)));
       pushLog(`👋 Welcome back — you drove ~${milesDriven} miles while away (${Math.round(elapsed/60)} min).`);
-      state.simTimeMs += elapsed * 1000;
+      state.simTimeMs += elapsed*1000;
       advance(elapsed);
     }
-    state.lastRealMs = now;
+    state.lastRealMs=now; saveState();
+  }
+
+  // ====== map projection (Web Mercator for Google Static + overlay) ======
+  function mercatorWorldXY(lat,lng,zoom){
+    const sinLat=Math.sin(toRad(lat));
+    const scale=256*Math.pow(2,zoom);
+    const x = (lng+180)/360 * scale;
+    const y = (0.5 - Math.log((1+sinLat)/(1-sinLat))/(4*Math.PI)) * scale;
+    return {x,y,scale};
+  }
+  function worldXYToLatLng(x,y,zoom){
+    const scale=256*Math.pow(2,zoom);
+    const lng = (x/scale)*360 - 180;
+    const n = Math.PI - 2*Math.PI*y/scale;
+    const lat = (180/Math.PI) * Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+    return {lat,lng};
+  }
+
+  // ====== map overlay sizing ======
+  const mapCtx = mapOverlay.getContext("2d");
+  function resizeMapOverlay(){
+    const dpr=window.devicePixelRatio||1;
+    const rect=mapOverlay.getBoundingClientRect();
+    mapOverlay.width=Math.floor(rect.width*dpr);
+    mapOverlay.height=Math.floor(rect.height*dpr);
+    mapCtx.setTransform(dpr,0,0,dpr,0,0);
+    drawMapOverlay();
+  }
+  // initial after layout
+  setTimeout(resizeMapOverlay, 50);
+
+  // ====== map view state ======
+  function fitRouteMap(){
+    // Fit route bounds into panel rect, pick zoom heuristic
+    const wps=route.waypoints;
+    let minLat=999,maxLat=-999,minLng=999,maxLng=-999;
+    for(const p of wps){
+      minLat=Math.min(minLat,p.lat); maxLat=Math.max(maxLat,p.lat);
+      minLng=Math.min(minLng,p.lng); maxLng=Math.max(maxLng,p.lng);
+    }
+    const centerLat=(minLat+maxLat)/2;
+    const centerLng=(minLng+maxLng)/2;
+    state.mapCenter={lat:centerLat,lng:centerLng};
+
+    // crude zoom guess based on span
+    const latSpan=maxLat-minLat;
+    const lngSpan=maxLng-minLng;
+    const span=Math.max(latSpan, lngSpan);
+    let z=4;
+    if(span<20) z=5;
+    if(span<12) z=6;
+    if(span<7) z=7;
+    if(span<4) z=8;
+    state.mapZoom = clamp(z, 1, 10);
     saveState();
   }
 
-  // -----------------------------
-  // Main update loops
-  // -----------------------------
-  let lastFrame = performance.now();
-  let lastSVUpdate = 0;
-  let lastWxUpdate = 0;
-  let lastHazardCheck = 0;
-  let lastMiniUpdate = 0;
+  function setMapZoom(z){
+    state.mapZoom = clamp(z, 1, 10);
+    saveState();
+    updateStaticMap(true);
+    drawMapOverlay();
+  }
+  function panMapByPixels(dx,dy){
+    const rect=mapOverlay.getBoundingClientRect();
+    const zoom=state.mapZoom;
+    const center=state.mapCenter;
+    const cxy=mercatorWorldXY(center.lat, center.lng, zoom);
+    // convert pixels into world units
+    const nx = cxy.x - dx;
+    const ny = cxy.y - dy;
+    const ll = worldXYToLatLng(nx, ny, zoom);
+    state.mapCenter = {lat: clamp(ll.lat,-85,85), lng: clamp(ll.lng,-180,180)};
+    saveState();
+    updateStaticMap(true);
+    drawMapOverlay();
+  }
 
-  async function updateStreetView(nowMs){
-    if (!state.running && !googleReady) return;
-    if (state.wpIndex >= segments.length) return;
+  // ====== Google Static Map (optional background) ======
+  let staticMapOk=false;
+  let lastStaticUrl="";
+  function buildStaticMapUrl(){
+    const key=apiKeyEl.value.trim();
+    if(!key) return null;
+    const rect=mapOverlay.getBoundingClientRect();
+    // Static Maps limits: size up to 640x640, so clamp and use scale=2 when we can.
+    const w=Math.max(320, Math.min(640, Math.round(rect.width)));
+    const h=Math.max(240, Math.min(640, Math.round(rect.height)));
+    const zoom=state.mapZoom;
+    const {lat,lng}=state.mapCenter;
+    const url=new URL("https://maps.googleapis.com/maps/api/staticmap");
+    url.searchParams.set("center", `${lat.toFixed(6)},${lng.toFixed(6)}`);
+    url.searchParams.set("zoom", String(zoom));
+    url.searchParams.set("size", `${w}x${h}`);
+    url.searchParams.set("scale", "2");
+    url.searchParams.set("maptype","roadmap");
+    url.searchParams.set("format","png");
+    url.searchParams.set("key", key);
+    return url.toString();
+  }
 
-    const interval = clamp(800, 2800 * (50 / state.speedMph), 2800);
-    if (nowMs - lastSVUpdate < interval) return;
-    lastSVUpdate = nowMs;
+  function updateStaticMap(force=false){
+    const style=mapStyleSel.value || "auto";
+    state.mapStyle = style;
+    saveState();
 
-    try{
-      await ensureStreetView();
+    const wantsGoogle = (style==="google") || (style==="auto");
+    if(!wantsGoogle){
+      mapImg.style.display="none";
+      staticMapOk=false;
+      drawMapOverlay();
+      return;
+    }
 
-      const seg = segments[state.wpIndex];
-      const pos = currentPos();
-      const lookT = clamp(state.t + 0.03, 0, 1);
-      const ahead = {lat: seg.a.lat + (seg.b.lat - seg.a.lat)*lookT, lng: seg.a.lng + (seg.b.lng - seg.a.lng)*lookT};
-      const hdg = headingDeg(pos, ahead);
+    const url=buildStaticMapUrl();
+    if(!url){ mapImg.style.display="none"; staticMapOk=false; drawMapOverlay(); return; }
+    if(!force && url===lastStaticUrl) return;
 
-      const panoData = await new Promise((resolve, reject) => {
-        svService.getPanorama(
-          {location: pos, radius: 120, source: google.maps.StreetViewSource.OUTDOOR},
-          (data, status) => {
-            if (status === "OK" && data) resolve(data);
-            else reject(new Error("Coverage gap"));
-          }
-        );
+    lastStaticUrl=url;
+    mapImg.onload=()=>{ staticMapOk=true; mapImg.style.display="block"; drawMapOverlay(); };
+    mapImg.onerror=()=>{ staticMapOk=false; mapImg.style.display="none"; drawMapOverlay(); };
+    mapImg.src=url;
+  }
+
+  // ====== map overlay drawing ======
+  let hoverStopIndex=null;
+  function drawSimpleGridBackground(w,h){
+    mapCtx.fillStyle="rgba(0,0,0,.18)";
+    mapCtx.fillRect(0,0,w,h);
+
+    mapCtx.strokeStyle="rgba(255,255,255,.06)";
+    mapCtx.lineWidth=1;
+    // lat/lng lines (every 30 degrees)
+    for(let lon=-180; lon<=180; lon+=30){
+      const p1=projectToMap({lat:-80,lng:lon});
+      const p2=projectToMap({lat:80,lng:lon});
+      mapCtx.beginPath(); mapCtx.moveTo(p1.x,p1.y); mapCtx.lineTo(p2.x,p2.y); mapCtx.stroke();
+    }
+    for(let lat=-60; lat<=60; lat+=30){
+      const p1=projectToMap({lat:lat,lng:-180});
+      const p2=projectToMap({lat:lat,lng:180});
+      mapCtx.beginPath(); mapCtx.moveTo(p1.x,p1.y); mapCtx.lineTo(p2.x,p2.y); mapCtx.stroke();
+    }
+  }
+
+  function projectToMap(ll){
+    const rect=mapOverlay.getBoundingClientRect();
+    const w=rect.width, h=rect.height;
+    const zoom=state.mapZoom;
+    const center=state.mapCenter;
+    const cxy=mercatorWorldXY(center.lat, center.lng, zoom);
+    const pxy=mercatorWorldXY(ll.lat, ll.lng, zoom);
+    const x = (pxy.x - cxy.x) + w/2;
+    const y = (pxy.y - cxy.y) + h/2;
+    return {x,y};
+  }
+
+  function drawMapOverlay(){
+    const rect=mapOverlay.getBoundingClientRect();
+    const w=rect.width, h=rect.height;
+    mapCtx.clearRect(0,0,w,h);
+
+    if(!staticMapOk){
+      drawSimpleGridBackground(w,h);
+    } else {
+      // subtle darken so route pops
+      mapCtx.fillStyle="rgba(0,0,0,.08)";
+      mapCtx.fillRect(0,0,w,h);
+    }
+
+    // route polyline with temp coloring if available
+    const wps=route.waypoints;
+    for(let i=0;i<wps.length-1;i++){
+      const a=wps[i], b=wps[i+1];
+      const pa=projectToMap(a), pb=projectToMap(b);
+
+      // temp color fallback
+      let col="rgba(255,255,255,.55)";
+      const ta = wxSampleData.get(i)?.tempC;
+      const tb = wxSampleData.get(i+1)?.tempC;
+      if(Number.isFinite(ta) && Number.isFinite(tb)){
+        col = tempColorC((ta+tb)/2);
+      } else if(Number.isFinite(ta)){
+        col = tempColorC(ta);
+      } else if(Number.isFinite(tb)){
+        col = tempColorC(tb);
+      }
+
+      mapCtx.strokeStyle=col;
+      mapCtx.lineWidth=4;
+      mapCtx.globalAlpha=0.9;
+      mapCtx.beginPath();
+      mapCtx.moveTo(pa.x,pa.y);
+      mapCtx.lineTo(pb.x,pb.y);
+      mapCtx.stroke();
+    }
+    mapCtx.globalAlpha=1;
+
+    // waypoint markers
+    for(let i=0;i<wps.length;i++){
+      const wp=wps[i];
+      const p=projectToMap(wp);
+      const snap=wxSampleData.get(i);
+      const wind=snap?.windMph ?? 0;
+      const mode=snap?.mode ?? "none";
+      const tC=snap?.tempC;
+
+      // marker
+      mapCtx.fillStyle = Number.isFinite(tC) ? tempColorC(tC) : "rgba(255,255,255,.75)";
+      mapCtx.strokeStyle = "rgba(0,0,0,.55)";
+      mapCtx.lineWidth=2;
+
+      const r = (wp.tier==="major"||wp.rare) ? 6 : 4;
+      mapCtx.beginPath();
+      mapCtx.arc(p.x,p.y,r,0,Math.PI*2);
+      mapCtx.fill();
+      mapCtx.stroke();
+
+      // icon text
+      mapCtx.font="12px system-ui";
+      mapCtx.fillStyle="rgba(255,255,255,.92)";
+      mapCtx.fillText(wxIcon(mode, wind), p.x+8, p.y+4);
+
+      if(wp.rare){
+        mapCtx.strokeStyle="rgba(125,211,252,.95)";
+        mapCtx.lineWidth=2;
+        mapCtx.beginPath(); mapCtx.arc(p.x,p.y,10,0,Math.PI*2); mapCtx.stroke();
+      }
+    }
+
+    // current position marker (CLEAR)
+    const pos=currentPos();
+    const pc=projectToMap(pos);
+    // pulse
+    const pulse = 7 + 3*Math.sin(performance.now()/220);
+    mapCtx.strokeStyle="rgba(255,255,255,.9)";
+    mapCtx.lineWidth=2;
+    mapCtx.beginPath(); mapCtx.arc(pc.x,pc.y,pulse,0,Math.PI*2); mapCtx.stroke();
+    mapCtx.fillStyle="rgba(255,255,255,1)";
+    mapCtx.beginPath(); mapCtx.arc(pc.x,pc.y,4.5,0,Math.PI*2); mapCtx.fill();
+
+    // label
+    mapCtx.font="12px system-ui";
+    mapCtx.fillStyle="rgba(255,255,255,.95)";
+    mapCtx.fillText("YOU", pc.x+10, pc.y-8);
+
+    // tip box from hover
+    if(hoverStopIndex!=null){
+      mapTip.style.display="block";
+    } else {
+      mapTip.style.display="none";
+    }
+  }
+
+  // ====== route list (Google maps-ish) ======
+  function renderRouteList(){
+    const wps=route.waypoints;
+    routeList.innerHTML = wps.map((wp,i)=>{
+      const active = (i===state.wpIndex) ? "active" : "";
+      return `<div class="stop ${active}" data-i="${i}">
+        <div>
+          <b>${safeText(wp.name)}</b><br>
+          <small>${wp.state || ""}${wp.rare ? " • rare" : ""}${wp.tier==="major" ? " • major" : ""}</small>
+        </div>
+        <div class="wx" id="wxStop_${i}">…</div>
+      </div>`;
+    }).join("");
+
+    routeList.querySelectorAll(".stop").forEach(el=>{
+      el.addEventListener("click",()=>{
+        const i=Number(el.dataset.i);
+        if(Number.isFinite(i)){
+          // Pan map to stop
+          const wp=route.waypoints[i];
+          state.mapCenter={lat:wp.lat,lng:wp.lng};
+          saveState();
+          updateStaticMap(true);
+          drawMapOverlay();
+          toast(`<b>Map:</b> centered on ${safeText(wp.name)}`,2400);
+        }
       });
+    });
+  }
 
-      const prevPov = pano.getPov?.() || null;
-      pano.setPano(panoData.location.pano);
+  // ====== map mouse interaction (pan + hover) ======
+  let mapDragging=false;
+  let mapDragStart=null;
 
-      const keepUserView = (performance.now() < userLookUntil);
-      settingPov = true;
-      if (keepUserView && prevPov){
-        pano.setPov(prevPov);
-      } else {
-        pano.setPov({heading: hdg, pitch: 0});
-      }
-      settingPov = false;
+  function mapPickStop(x,y){
+    const wps=route.waypoints;
+    let best=null;
+    for(let i=0;i<wps.length;i++){
+      const p=projectToMap(wps[i]);
+      const d=Math.hypot(p.x-x,p.y-y);
+      if(d<14 && (!best || d<best.d)) best={i,d,p};
+    }
+    return best;
+  }
 
-    } catch(e){
-      if ((e.message || "").toLowerCase().includes("key") || (e.message || "").toLowerCase().includes("auth")){
-        statusEl.innerHTML = `<span class="bad"><b>Street View blocked:</b> ${safeText(e.message)}</span> <span class="warn">Paste a valid key + check referrers.</span>`;
-        state.running = false;
-        saveState();
-        return;
-      }
-      statusEl.innerHTML = `<span class="warn"><b>Street View gap</b> — skipping forward to find coverage…</span>`;
-      advance(18);
+  mapOverlay.addEventListener("pointerdown",(e)=>{
+    mapDragging=true;
+    mapOverlay.setPointerCapture(e.pointerId);
+    const rect=mapOverlay.getBoundingClientRect();
+    mapDragStart={x:e.clientX, y:e.clientY, rect};
+  });
+  mapOverlay.addEventListener("pointermove",(e)=>{
+    const rect=mapOverlay.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+
+    if(mapDragging && mapDragStart){
+      const dx = e.clientX - mapDragStart.x;
+      const dy = e.clientY - mapDragStart.y;
+      panMapByPixels(dx,dy);
+      mapDragStart.x = e.clientX;
+      mapDragStart.y = e.clientY;
+      return;
+    }
+
+    const picked=mapPickStop(x,y);
+    if(!picked){
+      hoverStopIndex=null;
+      mapTip.style.display="none";
+      return;
+    }
+    hoverStopIndex=picked.i;
+    const wp=route.waypoints[picked.i];
+    const snap=wxSampleData.get(picked.i);
+    const wind=snap?.windMph ?? 0;
+    const mode=snap?.mode ?? "none";
+    const precip=snap?.precip ?? 0;
+    const tempC=snap?.tempC;
+    const tStr = (tempC==null) ? "—" : (state.unit==="C" ? `${tempC.toFixed(0)}°C` : `${cToF(tempC).toFixed(0)}°F`);
+    const when = snap?.timeMs ? fmtTime(snap.timeMs) : "—";
+    mapTip.innerHTML = `<b>${safeText(wp.name)}</b><br>${wxIcon(mode,wind)} ${mode} • precip ${precip.toFixed(1)} mm/h<br>💨 wind ${wind.toFixed(0)} mph • 🌡 ${tStr}<br><span style="opacity:.85">${when}</span>`;
+    mapTip.style.display="block";
+  });
+  mapOverlay.addEventListener("pointerup",()=>{ mapDragging=false; mapDragStart=null; });
+  mapOverlay.addEventListener("pointercancel",()=>{ mapDragging=false; mapDragStart=null; });
+
+  // ====== weather sampling for stops ======
+  // We sample every N stops for performance, but update route list display for all using nearest sample.
+  const wxSampleData=new Map(); // idx -> snap
+  let lastWxSamplesAt=0;
+
+  function sampleIndices(){
+    const wps=route.waypoints;
+    const out=new Set();
+    for(let i=0;i<wps.length;i++){
+      if(i%3===0) out.add(i);
+      if(wps[i].tier==="major"||wps[i].rare) out.add(i);
+    }
+    // always include current and next
+    out.add(state.wpIndex);
+    out.add(state.wpIndex+1);
+    return [...out].filter(i=>i>=0 && i<wps.length).sort((a,b)=>a-b);
+  }
+
+  async function refreshWxSamples(){
+    const wps=route.waypoints;
+    const simNow=state.simTimeMs;
+    const speedMps=mphToMps(state.speedMph);
+    const idxs=sampleIndices();
+
+    for(const idx of idxs){
+      const wp=wps[idx];
+      try{
+        const wx=await getWxForecast(wp.lat, wp.lng);
+        let tMs=simNow;
+        if(idx>state.wpIndex){
+          const dist=distanceMetersToWaypoint(idx);
+          tMs=simNow+(dist/speedMps)*1000;
+        }
+        const snap=wxAtTime(wx,tMs);
+        if(snap) wxSampleData.set(idx,snap);
+      }catch{}
+    }
+    updateRouteListWx();
+    drawMapOverlay();
+  }
+
+  function findNearestSample(i){
+    if(wxSampleData.has(i)) return wxSampleData.get(i);
+    // search outward a bit
+    for(let k=1;k<=3;k++){
+      if(wxSampleData.has(i-k)) return wxSampleData.get(i-k);
+      if(wxSampleData.has(i+k)) return wxSampleData.get(i+k);
+    }
+    return null;
+  }
+
+  function updateRouteListWx(){
+    const wps=route.waypoints;
+    for(let i=0;i<wps.length;i++){
+      const el=document.getElementById("wxStop_"+i);
+      if(!el) continue;
+      const snap=findNearestSample(i);
+      if(!snap){ el.textContent="…"; continue; }
+      const tC=snap.tempC;
+      const tStr=(tC==null)?"—":(state.unit==="C"?`${tC.toFixed(0)}°C`:`${cToF(tC).toFixed(0)}°F`);
+      el.textContent = `${wxIcon(snap.mode, snap.windMph)} ${tStr}`;
     }
   }
 
-  async function updateWeather(nowMs){
-    if (nowMs - lastWxUpdate < 25_000) return;
-    lastWxUpdate = nowMs;
+  // ====== HUD updates ======
+  function updateHud(){
+    hudSpeed.textContent=String(state.speedMph);
+    hudPct.textContent=pctProgress().toFixed(1)+"%";
+    hudMiles.textContent=String(milesFromMeters(state.meters));
+    hudEta.textContent=(state.wpIndex>=segments.length)?"—":fmtTime(etaMs());
 
-    const pos = currentPos();
-    try{
-      const wx = await getWxForecast(pos.lat, pos.lng);
-      const snap = wxAtTime(wx, state.simTimeMs);
-      if (!snap) return;
+    const nowWp=route.waypoints[state.wpIndex]||route.waypoints[route.waypoints.length-1];
+    const nextWp=route.waypoints[state.wpIndex+1]||null;
+    hudNow.textContent=nowWp?.name||"—";
+    hudNext.textContent=nextWp?.name||"—";
 
-      wxMode = snap.mode;
-      wxIntensity = snap.intensity;
-      wxWindMph = snap.windMph;
-      spawnParticles();
-
-      const tempStr = (snap.tempC==null) ? "—" : (state.unit==="C" ? `${snap.tempC.toFixed(0)}°C` : `${cToF(snap.tempC).toFixed(0)}°F`);
-      hudWx.textContent = `${wxIcon(snap.mode, snap.windMph)} ${snap.mode} • ${tempStr} • wind ${snap.windMph.toFixed(0)} mph`;
-
-      if (state.hazardMode && state.running && snap.windMph >= HIGH_WIND_MPH){
-        openHazardModal({
-          type:"wind",
-          title:`High wind (${snap.windMph.toFixed(0)} mph)`,
-          where: route.waypoints[state.wpIndex]?.name || "ahead",
-          when: fmtTime(state.simTimeMs),
-          precip: snap.precip,
-          windMph: snap.windMph,
-          tempC: snap.tempC,
-        });
-      }
-    } catch {
-      hudWx.textContent = "Weather unavailable";
-    }
+    const pos=currentPos();
+    mapWhere.textContent = `${nowWp?.name || "On the road"} • (${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)})`;
   }
 
+  // ====== hazards checking ======
   async function checkHazards(nowMs){
-    if (!state.hazardMode) return;
-    if (!state.running) return;
-    if (hazardActive) return;
-    if (nowMs - lastHazardCheck < HAZARD_CHECK_EVERY_MS) return;
+    if(!state.hazardMode || !state.running || hazardActive) return;
+    if(nowMs - lastHazardCheck < HAZARD_CHECK_EVERY_MS) return;
     lastHazardCheck = nowMs;
 
-    const wps = route.waypoints;
-    const speedMps = mphToMps(state.speedMph);
-    const simNow = state.simTimeMs;
+    const wps=route.waypoints;
+    const speedMps=mphToMps(state.speedMph);
+    const simNow=state.simTimeMs;
 
-    const candidates = wxSamples.filter(i => i > state.wpIndex);
-    for (const idx of candidates){
-      const distM = distanceMetersToWaypoint(idx);
-      const distMiles = distM / 1609.344;
-      if (distMiles > HAZARD_LOOKAHEAD_MILES) break;
+    // look ahead among sampled indices
+    const idxs = sampleIndices().filter(i=>i>state.wpIndex);
+    for(const idx of idxs){
+      const distM=distanceMetersToWaypoint(idx);
+      const distMiles=distM/1609.344;
+      if(distMiles > HAZARD_LOOKAHEAD_MILES) break;
 
-      const etaMsHere = simNow + (distM / speedMps) * 1000;
-      const wp = wps[idx];
+      const etaHere=simNow+(distM/speedMps)*1000;
+      const wp=wps[idx];
+
       try{
-        const wx = await getWxForecast(wp.lat, wp.lng);
-        const snap = wxAtTime(wx, etaMsHere);
-        if (!snap) continue;
+        const wx=await getWxForecast(wp.lat, wp.lng);
+        const snap=wxAtTime(wx, etaHere);
+        if(!snap) continue;
 
         const windBad = snap.windMph >= HIGH_WIND_MPH;
         const rainBad = snap.precip >= HEAVY_RAIN_MM_H;
         const snowBad = snap.snow >= HEAVY_SNOW_CM_H;
 
-        if (windBad || rainBad || snowBad){
+        if(windBad || rainBad || snowBad){
           const type = windBad ? "wind" : (snowBad ? "snow" : "rain");
           const title = windBad ? `High winds forecast (${snap.windMph.toFixed(0)} mph)` :
-                       snowBad ? `Snow squall forecast` :
-                       `Heavy rain forecast`;
-
-          openHazardModal({
-            type,
-            title,
-            where: wp.name,
-            when: fmtTime(etaMsHere),
-            precip: snap.precip,
-            windMph: snap.windMph,
-            tempC: snap.tempC,
-          });
+                        snowBad ? `Snow squall forecast` :
+                        `Heavy rain forecast`;
+          openHazardModal({type,title,where:wp.name,when:fmtTime(etaHere),precip:snap.precip,windMph:snap.windMph,tempC:snap.tempC});
           return;
         }
       } catch {}
     }
   }
 
-  async function updateMini(nowMs){
-    if (!state.minimapVisible) return;
-    if (nowMs - lastMiniUpdate < 30_000) return;
-    lastMiniUpdate = nowMs;
-    await refreshWxSamples();
-  }
+  // ====== main weather update (HUD + particles) ======
+  let lastWxUpdate=0;
+  async function updateWeather(nowMs){
+    if(nowMs-lastWxUpdate<25000) return;
+    lastWxUpdate=nowMs;
 
-  function updateHud(){
-    hudSpeed.textContent = String(state.speedMph);
-    hudPct.textContent = pctProgress().toFixed(1) + "%";
-    hudMiles.textContent = String(milesFromMeters(state.meters));
-    hudEta.textContent = (state.wpIndex >= segments.length) ? "—" : fmtTime(etaMs());
+    const pos=currentPos();
+    try{
+      const wx=await getWxForecast(pos.lat,pos.lng);
+      const snap=wxAtTime(wx,state.simTimeMs);
+      if(!snap) return;
+      wxMode=snap.mode; wxIntensity=snap.intensity; wxWindMph=snap.windMph;
+      spawnParticles();
 
-    const nowWp = route.waypoints[state.wpIndex] || route.waypoints[route.waypoints.length-1];
-    const nextWp = route.waypoints[state.wpIndex+1] || null;
-    hudNow.textContent = nowWp?.name || "—";
-    hudNext.textContent = nextWp?.name || "—";
-  }
+      const tempStr=(snap.tempC==null)?"—":(state.unit==="C"?`${snap.tempC.toFixed(0)}°C`:`${cToF(snap.tempC).toFixed(0)}°F`);
+      hudWx.textContent = `${wxIcon(snap.mode, snap.windMph)} ${snap.mode} • ${tempStr} • wind ${snap.windMph.toFixed(0)} mph`;
 
-  async function frame(now){
-    const dt = Math.min(0.25, (now - lastFrame)/1000);
-    lastFrame = now;
-
-    if (state.running){
-      state.simTimeMs += dt * 1000;
-      advance(dt);
-      checkLandmarksNear(currentPos());
+      // If wind is currently extreme, stop too
+      if(state.hazardMode && state.running && snap.windMph>=HIGH_WIND_MPH){
+        openHazardModal({type:"wind",title:`High wind now (${snap.windMph.toFixed(0)} mph)`,where:route.waypoints[state.wpIndex]?.name||"here",when:fmtTime(state.simTimeMs),precip:snap.precip,windMph:snap.windMph,tempC:snap.tempC});
+      }
+    }catch{
+      hudWx.textContent="Weather unavailable";
     }
-
-    drawWeather(dt);
-    updateHud();
-    drawMini();
-
-    await updateWeather(now);
-    await checkHazards(now);
-    await updateMini(now);
-    await updateStreetView(now);
-
-    requestAnimationFrame(frame);
   }
 
-  // -----------------------------
-  // Controls wiring
-  // -----------------------------
-  startBtn.addEventListener("click", async () => {
+  // ====== Street View update loop ======
+  let lastSVUpdate=0;
+  async function updateStreetView(nowMs){
+    if(state.wpIndex>=segments.length) return;
+    const interval = clamp(900, 2800*(50/state.speedMph), 2800);
+    if(nowMs-lastSVUpdate<interval) return;
+    lastSVUpdate=nowMs;
+
+    try{
+      await ensureStreetView();
+      const seg=segments[state.wpIndex];
+      const pos=currentPos();
+      const lookT=clamp(state.t+0.03,0,1);
+      const ahead={lat:seg.a.lat+(seg.b.lat-seg.a.lat)*lookT,lng:seg.a.lng+(seg.b.lng-seg.a.lng)*lookT};
+      const hdg=headingDeg(pos,ahead);
+
+      const panoData = await new Promise((resolve,reject)=>{
+        svService.getPanorama({location:pos,radius:120,source:google.maps.StreetViewSource.OUTDOOR},(data,status)=>{
+          if(status==="OK" && data) resolve(data);
+          else reject(new Error("Coverage gap"));
+        });
+      });
+
+      const keepUserView = (performance.now() < userLookUntil);
+      const active = getActivePano();
+      const prev = active?.getPov?.() || null;
+
+      const pov = keepUserView && prev ? prev : {heading:hdg, pitch:0};
+      await setPanoramaSmooth(panoData.location.pano, pov);
+
+      statusEl.innerHTML = `<span class="ok"><b>Driving…</b></span> <span style="opacity:.9">(${safeText(route.name)})</span>`;
+
+    } catch(e){
+      const msg = (e && e.message) ? String(e.message) : "Error";
+      if(msg.toLowerCase().includes("key") || msg.toLowerCase().includes("auth")){
+        statusEl.innerHTML = `<span class="bad"><b>Street View blocked:</b> ${safeText(msg)}</span> <span class="warn">Fix referrers + enable Maps JavaScript API.</span>`;
+        state.running=false; saveState();
+        return;
+      }
+      statusEl.innerHTML = `<span class="warn"><b>Street View gap</b> — skipping forward…</span>`;
+      advance(18);
+    }
+  }
+
+  // ====== map buttons ======
+  mapFitBtn.addEventListener("click", ()=>{ fitRouteMap(); updateStaticMap(true); drawMapOverlay(); toast(`<b>Map:</b> fit route`,2000); });
+  mapWorldBtn.addEventListener("click", ()=>{
+    state.mapCenter={lat:0,lng:0};
+    state.mapZoom=1;
+    saveState();
+    updateStaticMap(true); drawMapOverlay();
+    toast(`<b>Map:</b> world view`,2000);
+  });
+  mapZoomInBtn.addEventListener("click", ()=> setMapZoom(state.mapZoom+1));
+  mapZoomOutBtn.addEventListener("click", ()=> setMapZoom(state.mapZoom-1));
+  mapFullBtn.addEventListener("click", ()=>{
+    state.mapFullscreen = !state.mapFullscreen;
+    mapPanel.classList.toggle("fullscreen", state.mapFullscreen);
+    mapFullBtn.textContent = state.mapFullscreen ? "Min" : "Full";
+    saveState();
+    setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+  });
+
+  // ====== UI bar buttons ======
+  btnHud.addEventListener("click", ()=>{
+    state.hudCollapsed = !state.hudCollapsed;
+    hud.classList.toggle("collapsed", state.hudCollapsed);
+    hudCollapse.textContent = state.hudCollapsed ? "+" : "–";
+    saveState();
+  });
+  btnPanel.addEventListener("click", ()=>{
+    state.panelCollapsed = !state.panelCollapsed;
+    panel.classList.toggle("collapsed", state.panelCollapsed);
+    panelCollapse.textContent = state.panelCollapsed ? "+" : "–";
+    saveState();
+  });
+  btnMap.addEventListener("click", ()=>{
+    state.mapVisible = !state.mapVisible;
+    mapPanel.classList.toggle("hidden", !state.mapVisible);
+    saveState();
+    if(state.mapVisible){
+      setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+    }
+  });
+  btnHideAll.addEventListener("click", ()=>{
+    state.uiHidden = true;
+    wrap.classList.add("uiHidden");
+    saveState();
+  });
+  showUiBtn.addEventListener("click", ()=>{
+    state.uiHidden = false;
+    wrap.classList.remove("uiHidden");
+    saveState();
+    setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+  });
+
+  hudCollapse.addEventListener("click", ()=> btnHud.click());
+  panelCollapse.addEventListener("click", ()=> btnPanel.click());
+
+  // ====== controls wiring ======
+  rememberKeyEl.addEventListener("change", ()=>{
     state.rememberKey = rememberKeyEl.checked;
-    if (state.rememberKey) state.apiKey = apiKeyEl.value.trim();
+    if(!state.rememberKey) state.apiKey="";
+    saveState();
+    toast(state.rememberKey ? "Will remember key on this device." : "Won’t store key.");
+  });
+
+  speedSlider.addEventListener("input", ()=>{
+    const v=Number(speedSlider.value);
+    state.speedMph=v;
+    speedLabel.textContent=String(v);
+    hudSpeed.textContent=String(v);
+    saveState();
+  });
+
+  unitSel.addEventListener("change", ()=>{
+    state.unit=unitSel.value;
+    saveState();
+    toast(state.unit==="C" ? "Temperature set to °C" : "Temperature set to °F", 2000);
+    updateRouteListWx();
+    drawMapOverlay();
+  });
+
+  routeSel.addEventListener("change", ()=>{
+    switchRoute(routeSel.value, true);
+    toast(`<b>Route:</b> ${safeText(ROUTES[state.routeId].name)}`,2600);
+    pushLog(`🧭 Switched route to ${ROUTES[state.routeId].name}.`);
+  });
+
+  offlineToggle.addEventListener("change", ()=>{
+    state.offlineContinue=offlineToggle.checked;
+    saveState();
+    pushLog(state.offlineContinue ? "⏱️ Offline progress enabled." : "⏱️ Offline progress disabled.");
+  });
+
+  hazardToggle.addEventListener("change", ()=>{
+    state.hazardMode=hazardToggle.checked;
+    saveState();
+    pushLog(state.hazardMode ? "⚠️ Hazard warnings enabled." : "⚠️ Hazard warnings disabled.");
+  });
+
+  mapStyleSel.addEventListener("change", ()=>{
+    updateStaticMap(true);
+    toast(`<b>Map style:</b> ${safeText(mapStyleSel.value)}`, 2000);
+  });
+
+  startBtn.addEventListener("click", async ()=>{
+    state.rememberKey = rememberKeyEl.checked;
+    if(state.rememberKey) state.apiKey = apiKeyEl.value.trim();
     saveState();
 
     try{
       await ensureStreetView();
-      state.running = true;
-      saveState();
-      toast(`<b>Started driving.</b>`, 2200);
+      state.running=true; saveState();
+      toast(`<b>Started driving.</b>`,2200);
       pushLog("▶️ Started driving.");
+      updateStaticMap(true);
+      refreshWxSamples();
     } catch(e){
-      statusEl.innerHTML = `<span class="bad"><b>Error:</b> ${safeText(e.message)}</span> <span class="warn">Check your key + HTTP referrers in Google Cloud.</span>`;
+      statusEl.innerHTML = `<span class="bad"><b>Error:</b> ${safeText(e.message||"Error")}</span> <span class="warn">Check key + referrers.</span>`;
       toast(`<b>Street View not ready.</b> Check API key.`, 3200);
     }
   });
 
-  pauseBtn.addEventListener("click", () => {
-    state.running = false;
-    saveState();
-    toast(`<b>Paused.</b>`, 2000);
+  pauseBtn.addEventListener("click", ()=>{
+    state.running=false; saveState();
+    toast(`<b>Paused.</b>`,2000);
     pushLog("⏸️ Paused.");
   });
 
-  resetBtn.addEventListener("click", () => {
-    const key = apiKeyEl.value.trim();
+  resetBtn.addEventListener("click", ()=>{
+    const key=apiKeyEl.value.trim();
     localStorage.removeItem(STORE_KEY);
-    state = defaultState();
-    state.apiKey = rememberKeyEl.checked ? key : "";
+    state=defaultState();
     state.rememberKey = rememberKeyEl.checked;
+    state.apiKey = state.rememberKey ? key : "";
     state.routeId = routeSel.value;
     state.unit = unitSel.value;
     state.speedMph = Number(speedSlider.value);
     state.offlineContinue = offlineToggle.checked;
     state.hazardMode = hazardToggle.checked;
-    state.minimapVisible = miniToggle.checked;
+    state.mapStyle = mapStyleSel.value;
     state.simTimeMs = Date.now();
     state.lastRealMs = Date.now();
     saveState();
 
+    apiKeyEl.value=state.apiKey||"";
     rebuildRoute();
-    wxSamples = wxSampleIndices(state.routeId);
-    wxSampleData = new Map();
+    fitRouteMap();
+    resizeMapOverlay();
+    updateStaticMap(true);
 
-    apiKeyEl.value = state.apiKey || "";
-    toast(`<b>Reset.</b> Back to start.`, 2600);
+    toast(`<b>Reset.</b> Back to start.`,2600);
     pushLog("🔄 Reset trip.");
-    hudWx.textContent = "—";
-    statusEl.innerHTML = `Paste your <b>Google Maps API key</b> below, then click <b>Start</b>. <span class="warn">Don’t commit the key to GitHub.</span>`;
-    drawMini();
+    statusEl.innerHTML = `Paste your <b>Google Maps API key</b> below and press <b>Start</b>. <span class="warn">Don’t commit your key.</span>`;
     refreshWxSamples();
   });
 
-  rememberKeyEl.addEventListener("change", () => {
-    state.rememberKey = rememberKeyEl.checked;
-    if (!state.rememberKey) state.apiKey = "";
-    saveState();
-    toast(state.rememberKey ? "Will remember key on this device." : "Won’t store key.");
-  });
+  // ====== keyboard ======
+  addEventListener("keydown",(e)=>{
+    const tag=(document.activeElement && document.activeElement.tagName)?document.activeElement.tagName.toLowerCase():"";
+    if(tag==="input"||tag==="textarea"||tag==="select") return;
 
-  speedSlider.addEventListener("input", () => {
-    const v = Number(speedSlider.value);
-    state.speedMph = v;
-    speedLabel.textContent = String(v);
-    hudSpeed.textContent = String(v);
-    saveState();
-  });
-
-  unitSel.addEventListener("change", () => {
-    state.unit = unitSel.value;
-    saveState();
-    toast(state.unit === "C" ? "Temperature set to °C" : "Temperature set to °F", 2200);
-    drawMini();
-  });
-
-  routeSel.addEventListener("change", () => {
-    const newId = routeSel.value;
-    switchRoute(newId, true);
-    saveState();
-    toast(`<b>Route:</b> ${safeText(ROUTES[newId].name)}`, 2600);
-    pushLog(`🧭 Switched route to ${ROUTES[newId].name}.`);
-  });
-
-  miniToggle.addEventListener("change", () => {
-    state.minimapVisible = miniToggle.checked;
-    miniWrap.style.display = state.minimapVisible ? "block" : "none";
-    saveState();
-    if (state.minimapVisible){
-      resizeMini();
-      refreshWxSamples();
+    if(e.key.toLowerCase()==="h"){
+      e.preventDefault();
+      state.uiHidden = !state.uiHidden;
+      wrap.classList.toggle("uiHidden", state.uiHidden);
+      saveState();
+      if(!state.uiHidden) setTimeout(()=>{ resizeMapOverlay(); updateStaticMap(true); }, 40);
+    }
+    if(e.key.toLowerCase()==="m"){
+      e.preventDefault(); btnMap.click();
+    }
+    if(e.key.toLowerCase()==="f"){
+      e.preventDefault();
+      if(!state.mapVisible){ btnMap.click(); }
+      mapFullBtn.click();
+    }
+    if(e.key===" "){
+      e.preventDefault();
+      state.running ? pauseBtn.click() : startBtn.click();
+    }
+    if(e.key==="+"||e.key==="="){
+      e.preventDefault();
+      speedSlider.value=String(clamp(Number(speedSlider.value)+5,50,MAX_SPEED));
+      speedSlider.dispatchEvent(new Event("input"));
+    }
+    if(e.key==="-"||e.key==="_"){
+      e.preventDefault();
+      speedSlider.value=String(clamp(Number(speedSlider.value)-5,50,MAX_SPEED));
+      speedSlider.dispatchEvent(new Event("input"));
     }
   });
 
-  offlineToggle.addEventListener("change", () => {
-    state.offlineContinue = offlineToggle.checked;
-    saveState();
-    pushLog(state.offlineContinue ? "⏱️ Offline progress enabled." : "⏱️ Offline progress disabled.");
-  });
-
-  hazardToggle.addEventListener("change", () => {
-    state.hazardMode = hazardToggle.checked;
-    saveState();
-    pushLog(state.hazardMode ? "⚠️ Hazard warnings enabled." : "⚠️ Hazard warnings disabled.");
-  });
-
-  window.addEventListener("keydown", (e) => {
-    const tag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : "";
-    if (tag === "input" || tag === "textarea" || tag === "select") return;
-
-    if (e.key === " "){ e.preventDefault(); state.running ? pauseBtn.click() : startBtn.click(); }
-    if (e.key.toLowerCase() === "r"){ e.preventDefault(); resetBtn.click(); }
-    if (e.key.toLowerCase() === "m"){ e.preventDefault(); miniToggle.checked = !miniToggle.checked; miniToggle.dispatchEvent(new Event("change")); }
-    if (e.key.toLowerCase() === "t"){ e.preventDefault(); unitSel.value = (unitSel.value==="C" ? "F" : "C"); unitSel.dispatchEvent(new Event("change")); }
-    if (e.key === "+" || e.key === "="){ e.preventDefault(); speedSlider.value = String(clamp(Number(speedSlider.value)+5, 50, MAX_SPEED)); speedSlider.dispatchEvent(new Event("input")); }
-    if (e.key === "-" || e.key === "_"){ e.preventDefault(); speedSlider.value = String(clamp(Number(speedSlider.value)-5, 50, MAX_SPEED)); speedSlider.dispatchEvent(new Event("input")); }
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) handleReturn();
-    state.lastRealMs = Date.now();
-    saveState();
-  });
-  window.addEventListener("beforeunload", () => {
-    state.lastRealMs = Date.now();
-    saveState();
-  });
-
-  renderLog();
-  if (!state.log.length){
-    pushLog("Ready. Paste API key and click Start.");
+  // ====== map init ======
+  // set initial zoom/center sensibly
+  if(!state.mapCenter || !Number.isFinite(state.mapCenter.lat)){
+    fitRouteMap();
   }
-  resizeMini();
+  function mapInit(){
+    resizeMapOverlay();
+    updateStaticMap(true);
+    refreshWxSamples();
+  }
+  setTimeout(mapInit, 80);
+
+  // ====== loop ======
+  let lastFrame=performance.now();
+  let lastMiniUpdate=0;
+  let lastHazardCheck=0;
+  let lastWxSamplesAt=0;
+
+  function updateMapLive(nowMs){
+    // refresh static map periodically when visible (only if google static is enabled)
+    if(!state.mapVisible) return;
+    if(nowMs-lastMiniUpdate<30000) return;
+    lastMiniUpdate=nowMs;
+    refreshWxSamples();
+    updateStaticMap(false);
+  }
+
+  function advanceSim(dt){
+    if(state.running){
+      state.simTimeMs += dt*1000;
+      advance(dt);
+      checkLandmarksNear(currentPos());
+    }
+  }
+
+  async function frame(now){
+    const dt=Math.min(0.25,(now-lastFrame)/1000);
+    lastFrame=now;
+
+    advanceSim(dt);
+    drawWeather(dt);
+    updateToys(dt);
+    updateHud();
+    updateMapLive(now);
+
+    await updateWeather(now);
+    await checkHazards(now);
+    await updateStreetView(now);
+
+    requestAnimationFrame(frame);
+  }
+
+  // ====== page visibility ======
+  document.addEventListener("visibilitychange",()=>{
+    if(!document.hidden) handleReturn();
+    state.lastRealMs=Date.now(); saveState();
+  });
+  addEventListener("beforeunload",()=>{ state.lastRealMs=Date.now(); saveState(); });
+
+  // ====== first render ======
+  renderLog();
+  if(!state.log.length) pushLog("Ready. Paste API key and click Start.");
+  renderRouteList();
   refreshWxSamples();
   handleReturn();
   updateHud();
   requestAnimationFrame(frame);
 
-  console.log("[roadtrip] loaded", {route: state.routeId, waypoints: route.waypoints.length});
+  // ====== first time map background ======
+  setTimeout(()=>updateStaticMap(true), 300);
+
+  // ====== status hints ======
+  statusEl.innerHTML = `Paste your <b>Google Maps API key</b> below and press <b>Start</b>. <span class="warn">Don’t commit your key.</span>`;
+
 })();
 </script>
 </body>
